@@ -1,0 +1,400 @@
+/* ==========================================================================
+   Task cards, and the small pieces that live on them.
+   ========================================================================== */
+
+.card {
+  position: relative;
+  background: var(--paper-card);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--r-md);
+  padding: var(--sp-3) var(--sp-3) var(--sp-2) calc(var(--sp-3) + 3px);
+  box-shadow: var(--sh-rest);
+  cursor: grab;
+  overflow: hidden;
+  /* Transitioning transform would fight dnd-kit, which drives transform
+     directly during a drag. Only animate the decorative properties. */
+  transition: box-shadow var(--dur) var(--ease), border-color var(--dur) var(--ease);
+  touch-action: manipulation;
+}
+
+.card:hover {
+  box-shadow: var(--sh-hover);
+  border-color: var(--ink-ghost);
+}
+
+.card:active {
+  cursor: grabbing;
+}
+
+/* The coloured edge, from the task's first label. */
+.card__spine {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+}
+
+/* The card left behind while its copy is in the DragOverlay. Keeping a faint
+   outline shows where the card will return to if you cancel. */
+.card--dragging {
+  opacity: 0.3;
+  box-shadow: none;
+  border-style: dashed;
+}
+
+/* The copy that follows the cursor. A degree of rotation is enough to read as
+   "lifted off the page" without looking gimmicky. */
+.card--overlay {
+  cursor: grabbing;
+  box-shadow: var(--sh-lift);
+  transform: rotate(-1.4deg) scale(1.02);
+  border-color: var(--ink-faint);
+}
+
+/* Optimistic rows, not yet confirmed by the server. */
+.card--pending {
+  opacity: 0.72;
+}
+
+.card--done .card__title {
+  color: var(--ink-soft);
+}
+
+.card--done .card__open {
+  text-decoration: line-through;
+  text-decoration-color: var(--ink-ghost);
+  text-decoration-thickness: 1.5px;
+}
+
+.card--overdue {
+  border-color: rgba(193, 84, 74, 0.45);
+}
+
+.card__labels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.card__title {
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm);
+  font-weight: 550;
+  line-height: 1.4;
+  letter-spacing: 0;
+  color: var(--ink);
+}
+
+.card__open {
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  /* Wrap long titles rather than truncating: a task you can't read is useless. */
+  overflow-wrap: anywhere;
+}
+
+.card__open:hover {
+  text-decoration: underline;
+  text-decoration-color: var(--ink-ghost);
+}
+
+.card__desc {
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+  margin-top: 4px;
+  line-height: 1.5;
+  /* Two lines of preview, then fade out. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.card__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
+}
+
+.card__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.card__right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.card__grip {
+  color: var(--ink-ghost);
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--r-sm);
+  cursor: grab;
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+
+.card:hover .card__grip,
+.card__grip:focus-visible {
+  opacity: 1;
+}
+
+.card__grip:hover {
+  color: var(--ink-soft);
+}
+
+/* No hover on touch devices, so the grip has to be permanently visible. */
+@media (hover: none) {
+  .card__grip {
+    opacity: 1;
+  }
+}
+
+/* ---- Label chips -------------------------------------------------------- */
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: var(--r-full);
+  /* Tint derived from the label's own colour, so any user colour stays legible.
+     color-mix keeps the text dark and the fill pale from one input. */
+  color: color-mix(in srgb, var(--chip-color) 78%, #1b2530);
+  background: color-mix(in srgb, var(--chip-color) 16%, var(--paper-card));
+  border: 1px solid color-mix(in srgb, var(--chip-color) 34%, transparent);
+}
+
+.chip__x {
+  color: inherit;
+  opacity: 0.6;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.chip__x:hover {
+  opacity: 1;
+}
+
+.swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex: none;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+}
+
+.swatch--lg {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+}
+
+/* ---- Avatars ------------------------------------------------------------ */
+
+.avatar {
+  width: var(--avatar-size, 24px);
+  height: var(--avatar-size, 24px);
+  border-radius: var(--r-full);
+  background: var(--avatar-color, var(--ink-faint));
+  color: #fffdf7;
+  display: inline-grid;
+  place-items: center;
+  font-size: calc(var(--avatar-size, 24px) * 0.40);
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  flex: none;
+  box-shadow: 0 0 0 1.5px var(--paper-card);
+  user-select: none;
+}
+
+.avatar-stack {
+  display: flex;
+}
+
+.avatar-stack > .avatar + .avatar {
+  margin-left: -7px;
+}
+
+.avatar--more {
+  background: var(--paper-tint);
+  color: var(--ink-soft);
+  font-size: 9px;
+  box-shadow: 0 0 0 1.5px var(--paper-card), inset 0 0 0 1px var(--rule-strong);
+}
+
+/* ---- Priority ----------------------------------------------------------- */
+
+.prio {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.prio__bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 1.5px;
+  height: 10px;
+}
+
+.prio__bars i {
+  width: 2.5px;
+  border-radius: 1px;
+  background: var(--rule-strong);
+}
+
+.prio__bars i:nth-child(1) { height: 4px; }
+.prio__bars i:nth-child(2) { height: 7px; }
+.prio__bars i:nth-child(3) { height: 10px; }
+
+.prio--low .prio__bars i.on { background: var(--ink-faint); }
+.prio--normal .prio__bars i.on { background: var(--c-todo); }
+.prio--high .prio__bars i.on { background: var(--danger); }
+
+.prio__text {
+  font-size: var(--fs-xs);
+  text-transform: capitalize;
+  color: var(--ink-soft);
+}
+
+/* ---- Due badges --------------------------------------------------------- */
+
+.due {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: var(--r-full);
+  white-space: nowrap;
+}
+
+.due--overdue {
+  color: var(--danger);
+  background: var(--danger-tint);
+  border: 1px solid rgba(193, 84, 74, 0.28);
+}
+
+.due--today {
+  color: #a4701f;
+  background: var(--warn-tint);
+  border: 1px solid rgba(197, 138, 60, 0.3);
+}
+
+.due--soon {
+  color: var(--ink-soft);
+  background: var(--info-tint);
+  border: 1px solid rgba(91, 124, 153, 0.22);
+}
+
+.due--later,
+.due--muted {
+  color: var(--ink-faint);
+  background: transparent;
+  border: 1px solid var(--rule-strong);
+}
+
+.due--muted {
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+
+/* ---- Loading placeholders ---------------------------------------------- */
+
+.skeleton-card {
+  background: var(--paper-card);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-md);
+  padding: var(--sp-3);
+}
+
+.shimmer {
+  height: 9px;
+  border-radius: var(--r-full);
+  background: linear-gradient(
+    90deg,
+    rgba(35, 48, 61, 0.07) 0%,
+    rgba(35, 48, 61, 0.13) 50%,
+    rgba(35, 48, 61, 0.07) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s var(--ease) infinite;
+}
+
+.shimmer--title { width: 78%; }
+.shimmer--meta { width: 42%; margin-top: 9px; height: 7px; }
+.shimmer--line { width: 100%; margin-bottom: 8px; }
+.shimmer--line.short { width: 58%; }
+
+@keyframes shimmer {
+  from { background-position: 140% 0; }
+  to { background-position: -40% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shimmer {
+    animation: none;
+  }
+}
+
+.thread-loading {
+  padding: var(--sp-3) 0;
+}
+
+/* ---- Empty states ------------------------------------------------------- */
+
+.empty {
+  text-align: center;
+  padding: var(--sp-5) var(--sp-3);
+  color: var(--ink-faint);
+}
+
+.doodle {
+  color: var(--ink-ghost);
+  margin-bottom: var(--sp-2);
+}
+
+.empty__text {
+  font-family: var(--font-hand);
+  font-size: 1.125rem;
+  color: var(--ink-soft);
+}
+
+.empty__sub {
+  font-size: var(--fs-xs);
+  margin-top: 2px;
+  line-height: 1.45;
+}
+
+.empty--filtered {
+  padding: var(--sp-4) var(--sp-3);
+}
+
+.link-btn {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--focus);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  margin-top: var(--sp-2);
+}
+
+.link-btn:hover {
+  color: var(--ink);
+}

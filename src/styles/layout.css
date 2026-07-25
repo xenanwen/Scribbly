@@ -1,0 +1,515 @@
+/* ==========================================================================
+   App shell, masthead, toolbar, board and columns.
+   ========================================================================== */
+
+.app {
+  min-height: 100dvh;
+}
+
+.app__inner {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: var(--sp-5) var(--sp-5) var(--sp-6);
+  /* Clear the red margin rule so text never sits on top of it. */
+  padding-left: max(var(--sp-5), calc(var(--margin-offset) + 22px));
+}
+
+/* ---- Masthead ----------------------------------------------------------- */
+
+.masthead {
+  margin-bottom: var(--sp-5);
+}
+
+.masthead__row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--sp-5);
+  flex-wrap: wrap;
+  padding-bottom: var(--sp-3);
+  /* A double rule under the title block, like a ledger heading. */
+  border-bottom: 1px solid var(--rule-strong);
+  box-shadow: 0 3px 0 -2px var(--rule);
+}
+
+.masthead__title {
+  font-size: var(--fs-xl);
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  color: var(--ink);
+}
+
+.masthead__note {
+  font-family: var(--font-hand);
+  font-size: 1.0625rem;
+  color: var(--ink-soft);
+  margin-top: 2px;
+}
+
+.masthead__sync {
+  color: var(--c-progress);
+}
+
+.masthead--ghost {
+  opacity: 0.65;
+}
+
+/* ---- Summary ledger ----------------------------------------------------- */
+
+.ledger {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+}
+
+.figure {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  padding: 0 var(--sp-4);
+  min-width: 76px;
+}
+
+.figure + .figure {
+  border-left: 1px solid var(--rule-strong);
+}
+
+.figure:last-child {
+  padding-right: 0;
+}
+
+.figure__value {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 600;
+  line-height: 1.1;
+  color: var(--ink);
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.figure__note {
+  font-family: var(--font-ui);
+  font-style: normal;
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  color: var(--ink-faint);
+}
+
+.figure__label {
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--ink-faint);
+  font-weight: 500;
+  margin-top: 2px;
+}
+
+.figure--ok .figure__value {
+  color: var(--ok);
+}
+
+.figure--danger .figure__value {
+  color: var(--danger);
+}
+
+.figure--muted .figure__value {
+  color: var(--ink-ghost);
+}
+
+/* ---- Toolbar ------------------------------------------------------------ */
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin-top: var(--sp-4);
+  flex-wrap: wrap;
+}
+
+.search {
+  position: relative;
+  flex: 0 1 268px;
+  min-width: 180px;
+}
+
+.search__icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--ink-faint);
+  display: flex;
+  pointer-events: none;
+}
+
+.search__input {
+  width: 100%;
+  padding: 7px 30px 7px 32px;
+  background: var(--paper-card);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--r-full);
+  font-size: var(--fs-sm);
+  transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+
+.search__input::-webkit-search-cancel-button {
+  display: none;
+}
+
+.search__input:focus {
+  outline: none;
+  border-color: var(--focus);
+  box-shadow: 0 0 0 3px rgba(91, 124, 153, 0.16);
+}
+
+.search__input::placeholder {
+  color: var(--ink-faint);
+}
+
+.search__clear {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--ink-faint);
+  font-size: 17px;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: var(--r-sm);
+}
+
+.search__clear:hover {
+  color: var(--ink);
+}
+
+.toolbar__filters {
+  display: flex;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+
+.toolbar__right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.team-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 4px 10px 4px 6px;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--r-full);
+  background: var(--paper-card);
+  transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+
+.team-btn:hover {
+  border-color: var(--ink-faint);
+  box-shadow: var(--sh-rest);
+}
+
+.team-btn__stack {
+  display: flex;
+}
+
+.team-btn__stack > .avatar + .avatar {
+  margin-left: -8px;
+}
+
+.team-btn__empty {
+  width: 22px;
+  height: 22px;
+  border-radius: var(--r-full);
+  border: 1px dashed var(--ink-ghost);
+  color: var(--ink-faint);
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+}
+
+.team-btn__text {
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--ink-soft);
+}
+
+/* ---- Board -------------------------------------------------------------- */
+
+.board {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--sp-4);
+  align-items: start;
+  margin-top: var(--sp-5);
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--paper-tint);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-lg);
+  padding: var(--sp-3) var(--sp-3) var(--sp-2);
+  /* Slightly inset, so the column reads as a pocket holding the cards rather
+     than as another card. */
+  box-shadow: inset 0 1px 2px rgba(35, 48, 61, 0.045);
+  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+
+.column--over {
+  background: var(--paper-card);
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent), 0 0 0 4px rgba(91, 124, 153, 0.08);
+}
+
+.column__head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+/* The short coloured stroke that identifies each column — reads like a
+   highlighter mark in the margin. */
+.column__rule {
+  width: 3px;
+  height: 15px;
+  border-radius: 2px;
+  flex: none;
+}
+
+.column__title {
+  font-size: var(--fs-md);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  flex: 1;
+  min-width: 0;
+}
+
+.column__count {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--ink-soft);
+  background: rgba(35, 48, 61, 0.06);
+  border-radius: var(--r-full);
+  padding: 1px 7px;
+  font-variant-numeric: tabular-nums;
+}
+
+.column__add {
+  color: var(--ink-faint);
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--r-sm);
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+
+.column:hover .column__add,
+.column__add:focus-visible {
+  opacity: 1;
+}
+
+.column__add:hover {
+  background: rgba(35, 48, 61, 0.07);
+  color: var(--ink);
+}
+
+.column__hint {
+  font-size: var(--fs-xs);
+  color: var(--ink-faint);
+  margin: 3px 0 var(--sp-3) 11px;
+}
+
+.column__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  /* A minimum height so an empty column is still an easy drop target. */
+  min-height: 92px;
+}
+
+.column__quickadd {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 7px var(--sp-2);
+  margin-top: var(--sp-1);
+  border-radius: var(--r-md);
+  font-size: var(--fs-sm);
+  color: var(--ink-faint);
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+
+.column__quickadd:hover {
+  background: rgba(35, 48, 61, 0.05);
+  color: var(--ink);
+}
+
+.drop-hint {
+  border: 1.5px dashed var(--accent);
+  border-radius: var(--r-md);
+  padding: var(--sp-4);
+  text-align: center;
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+  background: rgba(255, 253, 247, 0.6);
+}
+
+/* ---- Inline quick add --------------------------------------------------- */
+
+.quickadd {
+  background: var(--paper-card);
+  border: 1px solid var(--focus);
+  border-radius: var(--r-md);
+  box-shadow: 0 0 0 3px rgba(91, 124, 153, 0.14);
+  overflow: hidden;
+}
+
+.quickadd__input {
+  width: 100%;
+  border: none;
+  resize: none;
+  padding: var(--sp-3);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+  background: transparent;
+}
+
+.quickadd__input:focus {
+  outline: none;
+}
+
+.quickadd__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px var(--sp-2) 5px var(--sp-3);
+  border-top: 1px solid var(--rule);
+}
+
+.quickadd__hint {
+  font-size: 10px;
+  color: var(--ink-faint);
+}
+
+.quickadd__save {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--paper-card);
+  background: var(--ink);
+  padding: 3px 10px;
+  border-radius: var(--r-sm);
+}
+
+.quickadd__save:disabled {
+  background: var(--ink-ghost);
+  cursor: not-allowed;
+}
+
+/* ---- Footer ------------------------------------------------------------- */
+
+.app__foot {
+  margin-top: var(--sp-6);
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--rule);
+  font-size: var(--fs-xs);
+  color: var(--ink-faint);
+}
+
+.app__foot kbd {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  background: var(--paper-card);
+  border: 1px solid var(--rule-strong);
+  border-bottom-width: 2px;
+  border-radius: 3px;
+  padding: 1px 4px;
+}
+
+/* ==========================================================================
+   Responsive
+   ========================================================================== */
+
+/* Tablet: two columns, so cards keep a usable width. */
+@media (max-width: 1080px) {
+  .board {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .app__inner {
+    padding: var(--sp-4) var(--sp-3) var(--sp-5);
+  }
+
+  .masthead__title {
+    font-size: 1.625rem;
+  }
+
+  .masthead__row {
+    align-items: flex-start;
+    gap: var(--sp-3);
+  }
+
+  .ledger {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .figure {
+    align-items: flex-start;
+    padding: 0;
+    flex: 1;
+  }
+
+  .figure + .figure {
+    border-left: none;
+  }
+
+  .toolbar__right {
+    margin-left: 0;
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .search {
+    flex: 1 1 100%;
+  }
+
+  /* Phone: one column per screen, swiped horizontally with snap points. This
+     keeps cards full-width and readable instead of squeezing four columns in. */
+  .board {
+    grid-template-columns: none;
+    display: flex;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    gap: var(--sp-3);
+    /* Bleed to the screen edges so the next column peeks in. */
+    margin-inline: calc(var(--sp-3) * -1);
+    padding-inline: var(--sp-3);
+    scrollbar-width: none;
+  }
+
+  .board::-webkit-scrollbar {
+    display: none;
+  }
+
+  .column {
+    flex: 0 0 84%;
+    scroll-snap-align: start;
+  }
+
+  /* Touch has no hover, so the per-column add button must always be visible. */
+  .column__add {
+    opacity: 1;
+  }
+}

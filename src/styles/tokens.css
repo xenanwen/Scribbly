@@ -1,0 +1,110 @@
+/* ==========================================================================
+   Design tokens — the single source of truth for the whole visual system.
+   Nothing below this file should contain a raw hex colour or a magic pixel
+   value; components only ever reference these variables.
+
+   Concept: a paper notebook. Warm cream stock, faint blue rules, a red margin
+   line, ink-blue type. Column accents are borrowed from highlighter and
+   ballpoint colours rather than typical SaaS blues.
+   ========================================================================== */
+
+:root {
+  /* ---- Paper & ink ---------------------------------------------------- */
+  --paper: #faf6ec;          /* the page itself */
+  --paper-tint: #f4eee0;     /* sunken areas: column bodies */
+  --paper-card: #fffdf7;     /* raised areas: task cards, panels */
+  --rule: #ccd9e6;           /* the faint blue horizontal rules */
+  --rule-strong: #b9cddd;
+  --margin-line: #dfa9a1;    /* the red vertical margin */
+
+  --ink: #23303d;            /* primary type */
+  --ink-soft: #5a6a79;       /* secondary type */
+  --ink-faint: #8d99a5;      /* tertiary type, placeholders */
+  --ink-ghost: #b3bcc5;      /* disabled, dividers */
+
+  /* ---- Column accents (ballpoint / highlighter) ----------------------- */
+  --c-todo: #5b7c99;
+  --c-progress: #c58a3c;
+  --c-review: #9b7fb5;
+  --c-done: #4f8a6b;
+
+  /* ---- Semantic ------------------------------------------------------- */
+  --danger: #c1544a;
+  --danger-tint: #f8e6e3;
+  --warn: #c58a3c;
+  --warn-tint: #fbf0dd;
+  --ok: #4f8a6b;
+  --ok-tint: #e6f0e9;
+  --info-tint: #e7eef4;
+
+  --accent: #c1544a;         /* interactive accent = the red pen */
+  --accent-hover: #a8443b;
+  --focus: #5b7c99;
+
+  /* ---- Typography ----------------------------------------------------- */
+  --font-ui: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI',
+    sans-serif;
+  --font-display: 'Fraunces', 'Iowan Old Style', Georgia, serif;
+  --font-hand: 'Caveat', 'Bradley Hand', cursive;
+  --font-mono: ui-monospace, 'SF Mono', Menlo, monospace;
+
+  --fs-xs: 0.6875rem;   /* 11px — meta, timestamps */
+  --fs-sm: 0.8125rem;   /* 13px — card body, labels */
+  --fs-base: 0.9375rem; /* 15px — default */
+  --fs-md: 1.0625rem;   /* 17px — column titles */
+  --fs-lg: 1.375rem;    /* 22px — panel titles */
+  --fs-xl: 2rem;        /* 32px — board title */
+
+  --lh-tight: 1.25;
+  --lh-base: 1.55;
+
+  /* ---- Spacing — 4px base grid, matched to the 28px rule height ------- */
+  --sp-1: 0.25rem;
+  --sp-2: 0.5rem;
+  --sp-3: 0.75rem;
+  --sp-4: 1rem;
+  --sp-5: 1.5rem;
+  --sp-6: 2rem;
+  --sp-7: 3rem;
+
+  --rule-height: 28px;      /* distance between ruled lines */
+  --margin-offset: 52px;    /* where the red margin sits */
+
+  /* ---- Radii — soft, like a rounded-corner index card ----------------- */
+  --r-sm: 4px;
+  --r-md: 7px;
+  --r-lg: 11px;
+  --r-full: 999px;
+
+  /* ---- Elevation — paper lifting off paper, never a hard drop shadow -- */
+  --sh-rest: 0 1px 1px rgba(35, 48, 61, 0.05),
+             0 1px 3px rgba(35, 48, 61, 0.06);
+  --sh-hover: 0 2px 4px rgba(35, 48, 61, 0.07),
+              0 6px 14px rgba(35, 48, 61, 0.09);
+  --sh-lift: 0 10px 20px rgba(35, 48, 61, 0.14),
+             0 3px 6px rgba(35, 48, 61, 0.10);
+  --sh-panel: -14px 0 34px rgba(35, 48, 61, 0.13);
+
+  /* ---- Motion — quick and un-bouncy; this is a work tool -------------- */
+  --ease: cubic-bezier(0.32, 0.72, 0, 1);
+  --dur-fast: 110ms;
+  --dur: 180ms;
+  --dur-slow: 300ms;
+
+  /* ---- Layout --------------------------------------------------------- */
+  --col-w: 306px;
+  --header-h: 116px;
+  --z-panel: 60;
+  --z-modal: 70;
+  --z-drag: 90;
+  --z-toast: 100;
+}
+
+/* Honour the OS setting. Drag-and-drop still works; it just stops animating. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-fast: 0ms;
+    --dur: 0ms;
+    --dur-slow: 0ms;
+  }
+}
