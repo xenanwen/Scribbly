@@ -1,9 +1,6 @@
-<<<<<<< HEAD
-# Task-Board-Project
-=======
 # Paperboard
 
-A Kanban board that looks like a paper notebook. Four columns, drag-and-drop between them, guest accounts with no sign-up, and everything persisted in Supabase behind Row Level Security.
+A Kanban board that looks like a paper notebook. Four columns, drag-and-drop between them, and three ways in — log in, create an account, or start as a guest with no sign-up at all. Everything persists in Supabase behind Row Level Security.
 
 **Live demo:** _paste your Vercel URL here after deploying_
 
@@ -33,16 +30,24 @@ same instructions instead of a blank page.
 1. Create a free project at [supabase.com](https://supabase.com).
 2. **SQL Editor → New query** → paste all of [`supabase/schema.sql`](supabase/schema.sql) → **Run**.
    It's idempotent, so re-running it is safe.
-3. **Authentication → Sign In / Providers →** enable **Anonymous sign-ins**.
-   Without this the app cannot create guest sessions.
-4. **Project Settings → API** → copy the **Project URL** and the **anon public** key into `.env.local`:
+3. **Authentication → Sign In / Providers**:
+   - enable **Anonymous sign-ins** — without this there are no guest sessions
+   - enable **Email**, and leave **Confirm email** on
+4. **Authentication → URL Configuration → Site URL** → `http://localhost:5173`.
+   Confirmation links redirect here, so add your production URL too once deployed.
+5. **Project Settings → API Keys** → copy the **Project URL** and the **anon / publishable**
+   key into `.env.local`:
 
    ```
    VITE_SUPABASE_URL=https://xxxxxxxx.supabase.co
-   VITE_SUPABASE_ANON_KEY=eyJhbGciOi...
+   VITE_SUPABASE_ANON_KEY=sb_publishable_...
    ```
 
-5. `npm run dev`.
+   The URL must be the bare origin — no `/rest/v1`, no trailing slash. supabase-js appends
+   the API paths itself. (`src/lib/supabase.ts` strips a stray path and warns, because
+   pasting one in is an easy mistake and the resulting failure is a bare network error.)
+
+6. `npm run dev`.
 
 > **Never** put the `service_role` key in `.env.local` or anywhere in `src/`. It bypasses
 > Row Level Security, and anything prefixed `VITE_` is compiled into the public JS bundle.
@@ -58,7 +63,7 @@ same instructions instead of a blank page.
 | `npm run build` | Typecheck, then production build to `dist/` |
 | `npm run preview` | Serve the production build locally |
 | `npm run typecheck` | `tsc --noEmit` |
-| `npm test` | 77 assertions over the ordering maths, filters and date logic |
+| `npm test` | 123 assertions over the ordering maths, filters, dates and form validation |
 | `npm run check` | typecheck + tests + build — run this before pushing |
 
 ---
@@ -68,21 +73,25 @@ same instructions instead of a blank page.
 ```
 src/
 ├── lib/
-│   ├── supabase.ts     Client + friendly error translation
-│   ├── auth.ts         Anonymous guest sessions (StrictMode-safe)
+│   ├── supabase.ts     Client, URL normalising, friendly error translation
+│   ├── auth.ts         Guests, sign up / in / out, guest→account upgrade
+│   ├── validate.ts     Email + password rules (pure, unit-tested)
 │   ├── board.ts        Pure logic: ordering, filtering, urgency, stats
 │   └── types.ts        Domain types, mirroring the SQL schema
 ├── hooks/
+│   ├── useSession.ts   Who is signed in — driven by onAuthStateChange
 │   ├── useBoard.ts     All reads/writes, optimistic updates, realtime
 │   └── useTaskThread.ts  Comments + activity for one task (lazy)
 ├── components/
+│   ├── HomeScreen.tsx  Opening screen: log in / sign up / guest
+│   ├── FinishUpgrade.tsx  Set a password after confirming an email
 │   ├── Board.tsx       Drag-and-drop orchestration
 │   ├── Column.tsx      One section + inline quick-add
 │   ├── TaskCard.tsx    Card, with pointer/keyboard drag split
 │   ├── TaskDetail.tsx  Detail drawer: fields, comments, timeline
 │   ├── TaskComposer.tsx  Full new-task form
-│   ├── TeamPanel.tsx   Members, labels, guest-session info
-│   ├── Header.tsx      Stats ledger, search, filters
+│   ├── TeamPanel.tsx   Members, labels, account / session
+│   ├── Header.tsx      Stats ledger, search, filters, identity pill
 │   ├── States.tsx      Loading / empty / error screens
 │   └── Overlay.tsx     Modal + Drawer shells (focus trap, Escape)
 └── styles/
@@ -90,8 +99,64 @@ src/
     ├── base.css        Reset + the ruled-paper background
     ├── layout.css      Shell, masthead, board, columns
     ├── cards.css       Cards, chips, avatars, badges, skeletons
-    └── ui.css          Controls, overlays, timeline
+    ├── ui.css          Controls, overlays, timeline
+    └── home.css        Opening screen, identity pill, upgrade box
 ```
+
+### Authentication
+
+Three ways in, all landing on the same security model. Every RLS policy keys on
+`auth.uid()`, which is a real uuid whether you arrived as a guest or with a password —
+**so adding accounts required no schema change at all.**
+
+| Route | Mechanism | Reaches |
+| --- | --- | --- |
+| Continue as guest | `signInAnonymously()` | This browser only |
+| Create an account | `signUp()`, email confirmation required | Any device |
+| Log in | `signInWithPassword()` | Any device |
+
+Routing is a state machine over the session rather than a router, because there are only
+four screens: `booting` → skeleton, `signedOut` → home screen, `upgradePending` → set a
+password, `signedIn` → the board.
+
+Nothing sets auth state imperatively. Forms call into `lib/auth`, Supabase emits an event,
+`useSession` picks it up via `onAuthStateChange`, and `App` re-renders. One direction, so
+the UI can't disagree with the session — and the tokens that arrive in the URL when someone
+returns from a confirmation email land on that same path for free, as do token refreshes
+and signing out in another tab.
+
+#### Turning a guest board into an account
+
+A guest who has built up a board can keep it. Linking an email to an anonymous user
+preserves the same `auth.uid()`, so every task, label, comment and activity row follows
+with **no data migration** — nothing is copied or reassigned.
+
+It has to be two steps, because Supabase refuses a password on an anonymous user until its
+email is verified:
+
+1. `updateUser({ email })` sends a confirmation link and sets `upgrade_pending` in user
+   metadata. The password is *not* collected here, so there is nothing to store.
+2. On return, `App` sees the flag and shows `FinishUpgrade`, which calls
+   `updateUser({ password })` and clears it.
+
+#### Why the implicit flow
+
+`supabase.ts` sets `flowType: 'implicit'` deliberately. PKCE stores a code verifier in
+localStorage and needs it back when the emailed link is opened — so confirming on your
+phone an account you created on your laptop fails with "code verifier missing". Implicit
+returns the tokens in the URL fragment instead, so confirmation works on any device. The
+trade-off is tokens briefly appearing in the URL; for email confirmation that's the better
+failure mode.
+
+#### What deliberately does *not* exist
+
+There is no "resume a past guest session by pasting its id". The guest uuid is not a
+secret — it sits in every row and is printed in the Team panel — so treating it as a
+credential would let anyone who saw one take over that board. Supabase agrees: an
+anonymous user "can't access their account if they sign out, clear browsing data, or use
+another device." Cross-device guest recovery would need a separate high-entropy code, and
+minting one safely needs the `service_role` key in an Edge Function. Creating an account is
+the supported path instead.
 
 ### Data flow
 
@@ -160,6 +225,22 @@ that and satisfies the "assign one or more team members" bonus feature.
 
 ### Security model
 
+Postgres access control has **two independent layers**, and a statement must pass both:
+
+1. **`GRANT`** — may this role touch this table at all?
+2. **`RLS`** — which rows may it touch?
+
+Policies alone are not enough. Without a grant, PostgREST fails with
+`42501 permission denied for table tasks` before any policy is even consulted. Section 4b of
+the schema grants explicitly rather than relying on Supabase's default privileges, which
+depend on which role ran the DDL.
+
+`authenticated` gets full DML and RLS narrows it to its own rows. **`anon` is granted
+nothing, deliberately** — a caller holding only the publishable key and no session should
+not read a single row. Guests call `signInAnonymously()` first, which upgrades them to
+`authenticated`. This is why hitting the REST API with just the anon key returns
+`401 permission denied`: that is the model working, not a bug.
+
 - Every table has `user_id uuid NOT NULL DEFAULT auth.uid()`. The client never chooses
   whose row it is writing — the database fills it in.
 - One policy per table: `USING (user_id = (select auth.uid()))` **and**
@@ -178,22 +259,43 @@ that and satisfies the "assign one or more team members" bonus feature.
 ### Verifying isolation
 
 ```sql
--- Should return rowsecurity = true for all seven tables.
+-- 1. RLS is on. Should return rowsecurity = true for all seven tables.
 select tablename, rowsecurity from pg_tables
 where schemaname = 'public' order by tablename;
+
+-- 2. Grants are right: seven rows for `authenticated`, ZERO rows for `anon`.
+select grantee, table_name,
+       string_agg(privilege_type, ', ' order by privilege_type) as privs
+from information_schema.role_table_grants
+where table_schema = 'public' and grantee in ('anon', 'authenticated')
+group by grantee, table_name order by grantee, table_name;
 ```
 
-In the app: open the board, note the guest id under **Team → This guest session**, add
-some tasks. Open the same URL in a different browser (or a private window) — a new
-guest id, an empty board, and no trace of the first session's tasks.
+**From outside the app** — an unauthenticated caller with the publishable key must be
+refused, not merely filtered:
+
+```zsh
+curl -sS -w "\nHTTP %{http_code}\n" \
+  -H "apikey: $VITE_SUPABASE_ANON_KEY" \
+  "$VITE_SUPABASE_URL/rest/v1/tasks?select=id&limit=1"
+# → 401, permission denied for table tasks
+```
+
+**In the app** — open the board, note the id under **Team → This guest session**, add some
+tasks. Open the same URL in a different browser or a private window: a new guest id, an
+empty board, no trace of the first session's tasks. Log in as an account on both instead
+and the same board appears in each.
 
 ---
 
 ## Features
 
 **Required** — four columns, drag between them to change status, create tasks with
-title/description/priority/due date, guest sign-in on first launch, RLS, distinct
-loading/empty/error states, responsive layout.
+title/description/priority/due date, guest sign-in, RLS, distinct loading/empty/error
+states, responsive layout.
+
+**Accounts** — an opening screen offering log in, sign up, or a guest session; email
+confirmation; sign out; and a guest→account upgrade that keeps the existing board.
 
 **Also built:**
 
@@ -247,8 +349,13 @@ variables under **Settings → Environment Variables**:
 They must be set for the Production environment, and a redeploy is needed if you add
 them after the first build — Vite inlines env vars at build time, not at runtime.
 
-No Supabase configuration is needed for the deploy: the anon key works from any origin,
-and RLS is what protects the data.
+**One Supabase change is required**, because accounts use email confirmation. In
+**Authentication → URL Configuration**, set **Site URL** to your Vercel URL and add it to
+**Redirect URLs**. Otherwise confirmation links point at `localhost` and a reviewer clicking
+one on the live site lands nowhere.
+
+Nothing else needs configuring: the anon key works from any origin, and RLS is what
+protects the data.
 
 ---
 
@@ -260,17 +367,28 @@ and RLS is what protects the data.
 - **Debounced refetch instead of merging realtime payloads.** Merging individual
   `postgres_changes` events into local state is fiddly and easy to get subtly wrong;
   a 400ms refetch is a few extra kilobytes and is always correct.
-- **Members are rows, not users.** Real invitations would need email auth, which the
-  guest-account requirement rules out.
-- **Tests cover logic, not components.** The ordering maths and filters are where the
-  real bugs live, and they're pure functions. Component tests would need jsdom plus a
-  testing library for comparatively little return here.
-- **One bundle, no code splitting.** ~110 kB gzipped for a single-screen app; splitting
-  would add complexity for no perceptible gain.
+- **Members are rows, not users.** They're names to assign work to, not accounts — there's
+  nobody to invite. Real collaboration would mean replacing per-user ownership with board
+  membership (a `boards` + `board_members` pair and a rewrite of all seven policies), which
+  the guest-account requirement precludes.
+- **No real-time collaboration.** The change feed is filtered to `user_id=eq.<you>`, so what
+  it actually delivers is sync across tabs of the same session — not two people on one
+  board. Worth stating plainly rather than implying more. `position` is also last-write-wins
+  with no version column, so concurrent drags of the same card would need optimistic
+  concurrency before multi-user editing would be safe.
+- **Only `tasks` is published for realtime.** Comments, activity, members and labels load
+  when a panel opens rather than streaming.
+- **Implicit auth flow rather than PKCE**, so email confirmation works across devices. See
+  the authentication section above.
+- **Tests cover logic, not components.** The ordering maths, filters and validation are
+  where the real bugs live, and they're pure functions — one of them caught a genuine
+  off-by-one in cross-column drops. Component tests would need jsdom plus a testing library
+  for comparatively little return.
+- **One bundle, no code splitting.** ~111 kB gzipped for a two-screen app; splitting would
+  add complexity for no perceptible gain.
 
 ---
 
 ## Licence
 
 MIT
->>>>>>> 7a3c458 (Paperboard: notebook-styled Kanban board on Supabase)

@@ -2,6 +2,7 @@ import { CheckRow, Popover } from './Popover'
 import { Avatar, PlusIcon, PriorityMark, SearchIcon } from './Primitives'
 import { PRIORITY_LABEL, computeStats } from '../lib/board'
 import { PRIORITIES } from '../lib/types'
+import type { Identity } from '../lib/auth'
 import type { Filters, Label, Member, Priority, Task } from '../lib/types'
 
 /* ==========================================================================
@@ -21,6 +22,7 @@ interface Props {
   onNewTask: () => void
   onOpenTeam: () => void
   syncing: boolean
+  identity: Identity
 }
 
 export function Header({
@@ -32,6 +34,7 @@ export function Header({
   onNewTask,
   onOpenTeam,
   syncing,
+  identity,
 }: Props) {
   const stats = computeStats(tasks)
 
@@ -42,7 +45,7 @@ export function Header({
     <header className="masthead">
       <div className="masthead__row">
         <div className="masthead__brand">
-          <h1 className="masthead__title">Paperboard</h1>
+          <h1 className="masthead__title">Scribbly</h1>
           <p className="masthead__note">
             everything you owe the week, on one page
             {syncing && <span className="masthead__sync"> · saving…</span>}
@@ -160,6 +163,22 @@ export function Header({
         </div>
 
         <div className="toolbar__right">
+          {/* Who you are, and for guests the nudge to keep the board. Opens the
+              same panel, where the upgrade and sign-out actions live. */}
+          <button
+            className={`who${identity.isGuest ? ' who--guest' : ''}`}
+            onClick={onOpenTeam}
+            title={
+              identity.isGuest
+                ? 'Guest session — tied to this browser. Click to save it to an account.'
+                : `Signed in as ${identity.email}`
+            }
+          >
+            <span className="who__dot" aria-hidden="true" />
+            <span className="who__text">{identity.isGuest ? 'Guest' : identity.email}</span>
+            {identity.isGuest && <span className="who__cta">save&nbsp;board</span>}
+          </button>
+
           {/* The team roster doubles as an affordance: seeing the avatars is what
               tells you assignment exists at all. */}
           <button className="team-btn" onClick={onOpenTeam}>

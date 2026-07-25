@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { Drawer } from './Overlay'
 import { Avatar, Button, TrashIcon } from './Primitives'
 import { MEMBER_COLORS, nextMemberColor } from '../lib/board'
+import { validateEmail } from '../lib/validate'
+import type { Identity } from '../lib/auth'
 import type { Label, Member, Task } from '../lib/types'
 
 /* ==========================================================================
@@ -14,26 +16,30 @@ interface Props {
   members: Member[]
   labels: Label[]
   tasks: Task[]
-  userId: string
+  identity: Identity
   onClose: () => void
   onCreateMember: (name: string, color: string) => void
   onDeleteMember: (id: string) => void
   onCreateLabel: (name: string, color: string) => void
   onDeleteLabel: (id: string) => void
   onResetSession: () => void
+  onStartUpgrade: (email: string) => Promise<void>
+  onSignOut: () => void
 }
 
 export function TeamPanel({
   members,
   labels,
   tasks,
-  userId,
+  identity,
   onClose,
   onCreateMember,
   onDeleteMember,
   onCreateLabel,
   onDeleteLabel,
   onResetSession,
+  onStartUpgrade,
+  onSignOut,
 }: Props) {
   const [memberName, setMemberName] = useState('')
   const [memberColor, setMemberColor] = useState(nextMemberColor(members.length))
@@ -163,42 +169,147 @@ export function TeamPanel({
         </form>
       </section>
 
-      {/* ---- Session ------------------------------------------------------- */}
+      {/* ---- Account / session --------------------------------------------- */}
       <section className="detail__section detail__section--last">
-        <h3 className="detail__h">This guest session</h3>
-        <p className="detail__muted">
-          You're signed in anonymously. Everything on this board belongs to the guest id below, and
-          Row Level Security in Postgres makes it unreadable to anyone else — including other guests
-          on this same deployment.
-        </p>
-        <code className="session-id">{userId}</code>
-        <p className="detail__muted">
-          The session lives in this browser's local storage, so this device keeps its board. A
-          different browser gets a different guest id and a fresh, separate board.
-        </p>
+        <h3 className="detail__h">{identity.isGuest ? 'This guest session' : 'Your account'}</h3>
 
-        {confirmReset ? (
-          <div className="confirm">
-            <span className="confirm__text">
-              Start a brand-new guest session? This board stays in the database but this browser
-              won't be able to reach it again.
-            </span>
-            <div className="modal__actions">
-              <Button variant="quiet" onClick={() => setConfirmReset(false)}>
-                Cancel
+        {identity.isGuest ? (
+          <>
+            <p className="detail__muted">
+              You're signed in anonymously. Everything here belongs to the id below, and Row Level
+              Security in Postgres makes it unreadable to anyone else — including other guests on
+              this same deployment.
+            </p>
+            <code className="session-id">{identity.userId}</code>
+            <p className="detail__muted">
+              The session lives in this browser's local storage, so this device keeps its board. A
+              different browser gets a different id and a separate board.
+            </p>
+
+            <UpgradeBox onStartUpgrade={onStartUpgrade} />
+
+            {confirmReset ? (
+              <div className="confirm">
+                <span className="confirm__text">
+                  Start a brand-new guest session? This board stays in the database but this browser
+                  won't be able to reach it again.
+                </span>
+                <div className="modal__actions">
+                  <Button variant="quiet" onClick={() => setConfirmReset(false)}>
+                    Cancel
+                  </Button>
+                  <Button variant="danger" onClick={onResetSession}>
+                    New session
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <Button variant="ghost" size="sm" onClick={() => setConfirmReset(true)}>
+                Start a new guest session
               </Button>
-              <Button variant="danger" onClick={onResetSession}>
-                New session
-              </Button>
-            </div>
-          </div>
+            )}
+          </>
         ) : (
-          <Button variant="ghost" size="sm" onClick={() => setConfirmReset(true)}>
-            Start a new guest session
-          </Button>
+          <>
+            <p className="detail__muted">
+              Signed in as <strong>{identity.email}</strong>. You can log in from any device and
+              this board follows you.
+            </p>
+            <code className="session-id">{identity.userId}</code>
+            <p className="detail__muted">
+              That id is what every Row Level Security policy checks. It is not a secret — knowing
+              it grants nothing without your session.
+            </p>
+            <Button variant="ghost" size="sm" onClick={onSignOut}>
+              Sign out
+            </Button>
+          </>
         )}
       </section>
     </Drawer>
+  )
+}
+
+/** Guest → account, step one: collect an email and send the confirmation link.
+ *  No password here — Supabase rejects one until the address is verified. */
+function UpgradeBox({ onStartUpgrade }: { onStartUpgrade: (email: string) => Promise<void> }) {
+  const [open, setOpen] = useState(false)
+  const [email, setEmail] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [sent, setSent] = useState(false)
+
+  if (sent) {
+    return (
+      <div className="upgrade upgrade--sent">
+        <p className="detail__muted">
+          Confirmation link sent to <strong>{email}</strong>. Click it and you'll come back here to
+          set a password. Your board stays exactly as it is.
+        </p>
+      </div>
+    )
+  }
+
+  if (!open) {
+    return (
+      <div className="upgrade">
+        <p className="upgrade__pitch">
+          <strong>Keep this board for good.</strong> Add an email and password and it stops being
+          tied to this browser — nothing on it moves or is lost.
+        </p>
+        <Button variant="primary" size="sm" onClick={() => setOpen(true)}>
+          Save this board to an account
+        </Button>
+      </div>
+    )
+  }
+
+  return (
+    <form
+      className="upgrade"
+      onSubmit={async (e) => {
+        e.preventDefault()
+        const err = validateEmail(email)
+        setError(err)
+        if (err) return
+        setBusy(true)
+        try {
+          await onStartUpgrade(email)
+          setSent(true)
+        } catch (submitError) {
+          setError(submitError instanceof Error ? submitError.message : String(submitError))
+        } finally {
+          setBusy(false)
+        }
+      }}
+    >
+      <label className="field__label" htmlFor="upgrade-email">
+        Your email
+      </label>
+      <input
+        id="upgrade-email"
+        className={`input input--sm${error ? ' input--invalid' : ''}`}
+        type="email"
+        autoComplete="email"
+        autoCapitalize="none"
+        spellCheck={false}
+        value={email}
+        onChange={(e) => {
+          setEmail(e.target.value)
+          if (error) setError(null)
+        }}
+        aria-invalid={Boolean(error)}
+      />
+      {error && <p className="field__error">{error}</p>}
+      <div className="upgrade__actions">
+        <Button variant="primary" size="sm" type="submit" disabled={busy}>
+          {busy ? 'Sending…' : 'Send confirmation link'}
+        </Button>
+        <button type="button" className="link-btn" onClick={() => setOpen(false)}>
+          Cancel
+        </button>
+      </div>
+    </form>
   )
 }
 

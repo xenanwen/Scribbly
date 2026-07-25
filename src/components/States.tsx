@@ -114,7 +114,7 @@ export function SetupState() {
       <div className="state-page__card state-page__card--wide">
         <h2>Almost there</h2>
         <p className="state-page__msg">
-          Paperboard needs your Supabase project details before it can load a board.
+          Scribbly needs your Supabase project details before it can load a board.
         </p>
         <ol className="setup-list">
           <li>
