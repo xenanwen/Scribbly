@@ -11,8 +11,41 @@ import { createClient } from '@supabase/supabase-js'
    Anything prefixed VITE_ is inlined into the JS bundle and is world-readable.
    ========================================================================== */
 
-const url = import.meta.env.VITE_SUPABASE_URL
+const rawUrl = import.meta.env.VITE_SUPABASE_URL
 const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+
+/**
+ * Normalise the project URL.
+ *
+ * supabase-js wants the bare origin — `https://<ref>.supabase.co` — and appends
+ * `/rest/v1`, `/auth/v1` etc. itself. But the dashboard displays some endpoints
+ * with those paths already attached, so pasting one in is an easy mistake, and
+ * the resulting `/rest/v1/rest/v1/...` requests fail with nothing but a generic
+ * network error. Strip any path rather than let that happen.
+ */
+function normaliseUrl(value: string | undefined): string | undefined {
+  if (!value) return value
+  const trimmed = value.trim().replace(/\/+$/, '')
+  try {
+    const parsed = new URL(trimmed)
+    if (parsed.pathname !== '/' && parsed.pathname !== '') {
+      if (import.meta.env.DEV) {
+        console.warn(
+          `[paperboard] VITE_SUPABASE_URL should be just the project origin.\n` +
+            `  got:      ${trimmed}\n` +
+            `  using:    ${parsed.origin}\n` +
+            `Drop the "${parsed.pathname}" part in .env.local to silence this.`,
+        )
+      }
+      return parsed.origin
+    }
+    return parsed.origin
+  } catch {
+    return trimmed // let the client surface a clearer error than we can
+  }
+}
+
+const url = normaliseUrl(rawUrl)
 
 /** True when env vars are present. The UI shows a setup screen when false,
  *  rather than crashing with an opaque error. */
@@ -25,11 +58,12 @@ if (import.meta.env.DEV && !isConfigured) {
   )
 }
 
-// A guard against the single most expensive mistake possible here.
-if (anonKey && anonKey.includes('service_role')) {
+/* A guard against the single most expensive mistake possible here. Covers both
+   the legacy JWT-style service key and the current `sb_secret_` format. */
+if (anonKey && (anonKey.includes('service_role') || anonKey.startsWith('sb_secret_'))) {
   throw new Error(
-    'That looks like a service_role key. Never put it in a frontend env var — ' +
-      'it bypasses Row Level Security. Use the anon / publishable key.',
+    'That looks like a secret / service_role key. Never put it in a frontend env ' +
+      'var — it bypasses Row Level Security. Use the anon (sb_publishable_…) key.',
   )
 }
 
@@ -63,8 +97,21 @@ export function friendlyError(err: unknown): string {
   if (lower.includes('anonymous sign-ins are disabled')) {
     return 'Anonymous sign-in is turned off for this Supabase project. Enable it under Authentication → Sign In / Providers → Anonymous sign-ins.'
   }
-  if (lower.includes('failed to fetch') || lower.includes('networkerror')) {
-    return 'Cannot reach Supabase. Check your connection and that VITE_SUPABASE_URL is correct.'
+  /* Browsers word network failures differently and none of them say anything
+     useful: Chrome "Failed to fetch", Safari "Load failed", Firefox
+     "NetworkError". By far the most common cause here is a malformed project
+     URL, so say so rather than blaming the connection. */
+  if (
+    lower.includes('failed to fetch') ||
+    lower === 'load failed' ||
+    lower.includes('networkerror') ||
+    lower.includes('err_name_not_resolved')
+  ) {
+    return (
+      'Cannot reach Supabase. Check VITE_SUPABASE_URL in .env.local — it should be ' +
+      'just https://<your-ref>.supabase.co with no /rest/v1 or trailing path. ' +
+      'Restart the dev server after changing it.'
+    )
   }
   // 42P01 undefined_table
   if (code === '42P01' || lower.includes('does not exist')) {

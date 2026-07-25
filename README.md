@@ -265,7 +265,7 @@ and RLS is what protects the data.
 - **Tests cover logic, not components.** The ordering maths and filters are where the
   real bugs live, and they're pure functions. Component tests would need jsdom plus a
   testing library for comparatively little return here.
-- **One bundle, no code splitting.** 134 kB gzipped for a single-screen app; splitting
+- **One bundle, no code splitting.** ~110 kB gzipped for a single-screen app; splitting
   would add complexity for no perceptible gain.
 
 ---

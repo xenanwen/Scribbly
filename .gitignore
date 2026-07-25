@@ -438,6 +438,7 @@ node_modules
 dist
 dist-ssr
 build
+*.tsbuildinfo
 
 # secrets / local env  — NEVER commit these
 .env

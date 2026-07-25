@@ -225,6 +225,44 @@ create policy activity_owner_insert on public.activity
   with check (user_id = (select auth.uid()));
 
 -- ---------------------------------------------------------------------------
+-- 4b. TABLE-LEVEL GRANTS
+--
+-- Postgres access control has two independent layers and a statement must pass
+-- BOTH:
+--
+--   1. GRANT — may this role touch this table at all?
+--   2. RLS   — which rows may it touch?
+--
+-- Policies alone are not enough. Without a GRANT, PostgREST fails with
+--   42501  permission denied for table tasks
+-- before any policy is consulted. Supabase's default privileges normally cover
+-- new tables in `public`, but that depends on which role ran the DDL, so grant
+-- explicitly rather than relying on it.
+--
+-- `authenticated` gets full DML; RLS is what narrows it to its own rows.
+-- `anon` deliberately gets nothing: a caller holding only the publishable key
+-- and no session should not be able to read a single row. Guests call
+-- signInAnonymously() first, which upgrades them to `authenticated`.
+-- ---------------------------------------------------------------------------
+grant usage on schema public to anon, authenticated;
+
+grant select, insert, update, delete on
+  public.members,
+  public.labels,
+  public.tasks,
+  public.task_assignees,
+  public.task_labels,
+  public.comments
+  to authenticated;
+
+-- activity is append-only, matching its policies: no update, no delete.
+grant select, insert on public.activity to authenticated;
+
+-- Belt and braces: make sure the unauthenticated role has no reach into the
+-- data, even if a default privilege granted it something earlier.
+revoke all on all tables in schema public from anon;
+
+-- ---------------------------------------------------------------------------
 -- 5. TRIGGERS
 -- ---------------------------------------------------------------------------
 
