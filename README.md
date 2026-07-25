@@ -1,14 +1,14 @@
-<<<<<<< HEAD
+
 # Task-Board-Project
-=======
+
 # Paperboard
 
-A Kanban board that looks like a paper notebook. Four columns, drag-and-drop between them, guest accounts with no sign-up, and everything persisted in Supabase behind Row Level Security.
+A Kanban board themed by a paper notebook. Four columns, drag-and-drop between them, guest accounts with no sign-up, and everything persisted in Supabase behind Row Level Security.
 
-**Live demo:** _paste your Vercel URL here after deploying_
+**Live demo:** _Vercel URL will be here after deploying_
 
-<!-- Take a screenshot of the board once it's running, save it as docs/screenshot.png,
-     and uncomment the line below. Graders look at the README first.
+<!-- Will take a screenshot of the board once it's running, save it as docs/screenshot.png,
+     and uncomment the line below. Look at README first.
 ![Paperboard: four columns on a cream ruled-paper background](docs/screenshot.png)
 -->
 
