@@ -10,7 +10,8 @@ One of my design changes to the original requirements was to not have the board 
 **Live demo:** (https://scribbly-gold.vercel.app)
 
 
-(Uploading Screenshot 2026-07-25 at 8.15.46 PM.png…)
+![Screenshot](/relative/path/to/img.jpg?raw=true "Screenshot of opening page")
+
 
 
 ---
