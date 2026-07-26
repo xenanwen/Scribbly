@@ -521,8 +521,3 @@ protects the data.
 - **One bundle, no code splitting.** ~111 kB gzipped for a two-screen app; splitting would
   add complexity for no perceptible gain.
 
----
-
-## Licence
-
-MIT
