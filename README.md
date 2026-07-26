@@ -10,7 +10,7 @@ One of my design changes to the original requirements was to not have the board 
 **Live demo:** (https://scribbly-gold.vercel.app)
 
 
-![Screenshot](/relative/path/to/img.jpg?raw=true "Screenshot of opening page")
+![Screenshot of Home Page](ScribblyOpenPage.png)
 
 
 
