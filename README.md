@@ -41,7 +41,7 @@ Node **20.19+** or **22.12+** — Vite 8's floor.
 
 ```zsh
 git clone https://github.com/xenanwen/Scribbly.git
-cd Task-Board-Project
+cd Scribbly
 npm install
 cp .env.local.example .env.local   # then fill in the two values (see below)
 npm run dev                        # http://localhost:5173
