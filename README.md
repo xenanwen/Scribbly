@@ -4,7 +4,7 @@ A Kanban board themed by a classic paper notebook.
 
 Boards can be shared with other people. Everything persists in Supabase behind Row Level Security.
 
-**Live demo:** [Vercel link](https://scribbly-gold.vercel.app](https://scribbly-inmx5intb-xenanwens-projects.vercel.app)
+**Live demo:** Vercel link: https://scribbly-gold.vercel.app](https://scribbly-inmx5intb-xenanwens-projects.vercel.app
 
 ![Scribbly's opening screen](ScribblyOpenPage.png)
 
