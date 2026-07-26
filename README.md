@@ -328,8 +328,7 @@ makes dragging feel instant.
 
 A Postgres change feed filtered to `board_id=eq.<board>` keeps collaborators and other
 tabs in sync. Realtime events trigger a debounced refetch, suppressed while our own writes
-are in flight so they can't clobber an optimistic update mid-request. `tasks` and
-`board_members` are the published tables; everything else loads when a panel opens.
+are in flight so they can't clobber an optimistic update mid-request. `tasks` is the published tables; everything else loads when a panel opens.
 
 ### Card ordering: fractional indexing
 
