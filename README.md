@@ -60,9 +60,15 @@ same instructions instead of a blank page.
    3. [`supabase/003_real_members.sql`](supabase/003_real_members.sql) — team
       members become real accounts: a trigger creates one when somebody joins, and
       hand-invented placeholder people are removed
+   4. [`supabase/004_invite_param_fix.sql`](supabase/004_invite_param_fix.sql) —
+      `create_board_invite()` takes its expiry as `text`, so PostgREST can
+      resolve the call instead of answering 404
+   5. [`supabase/005_invite_token_fix.sql`](supabase/005_invite_token_fix.sql) —
+      invite tokens stop depending on pgcrypto, which Supabase keeps in the
+      `extensions` schema where the invite functions could not see it
 
    > Running `schema.sql` again **after** `002` would restore the old single-user
-   > policies and break sharing. If you ever need to reset, run all three in order.
+   > policies and break sharing. If you ever need to reset, run all five in order.
 
    Then confirm the result with [`supabase/verify.sql`](supabase/verify.sql) — a
    single query returning `PASS` / `FAIL` for RLS, grants, orphaned rows and

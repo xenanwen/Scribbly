@@ -113,6 +113,22 @@ export function friendlyError(err: unknown): string {
       'Restart the dev server after changing it.'
     )
   }
+  /* 42883 undefined_function. Checked BEFORE the table case, which matches on
+     the bare words "does not exist" and would otherwise claim a table is
+     missing when the truth is a function the database cannot resolve — usually
+     one that lives in a schema outside the caller's search_path. */
+  if (
+    code === '42883' ||
+    code === 'PGRST202' ||
+    (lower.includes('function') && lower.includes('does not exist')) ||
+    lower.includes('in the schema cache')
+  ) {
+    return (
+      'The database could not find a function it needs. Run the numbered ' +
+      'migrations in supabase/ that you have not run yet — they go in order ' +
+      'after schema.sql.'
+    )
+  }
   // 42P01 undefined_table
   if (code === '42P01' || lower.includes('does not exist')) {
     return 'A table is missing. Run supabase/schema.sql in the Supabase SQL editor.'

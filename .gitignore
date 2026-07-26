@@ -462,3 +462,6 @@ pnpm-debug.log*
 .vercel
 .netlify
 coverage
+
+# transpiled test suites — npm test rebuilds these every run
+tests/.build
