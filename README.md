@@ -1,21 +1,43 @@
 # Scribbly
 
-A Kanban board themed by a paper notebook. Four columns, drag-and-drop between them, and three ways in — log in, create an account, or start as a guest with no sign-up at all. Everything persists in Supabase behind Row Level Security.
+A Kanban board themed by a classic paper notebook. 
 
-**Live demo:** _Vercel URL will be here after deploying_
+Boards can be shared with other people. Everything persists in Supabase behind Row Level Security.
 
-<!-- Take a screenshot of the board once it's running, save it as docs/screenshot.png,
-     and uncomment the line below. Graders look at the README first.
-![Scribbly: four columns on a cream ruled-paper background](docs/screenshot.png)
--->
+**Live demo:** [scribbly-gold.vercel.app](https://scribbly-gold.vercel.app)
 
+![Scribbly's opening screen](ScribblyOpenPage.png)
+
+---
+
+## Design decisions beyond the brief
+
+**I decided to pivot from one of the requirements -- the app doesn't open a guest session automatically for you.** The brief asks for a guest session on
+first launch; instead the first screen offers three paths — start a guest session, create
+an account, or log in. Opening a session silently means a visitor has an identity and a
+board before they've chosen anything, and it leaves no natural place to explain what a
+guest board actually is. Guest is still one click, and still the option the copy nudges
+you toward.
+
+**A guest board can become a real account without losing anything.** Linking an email to
+an anonymous user keeps the same `auth.uid()`, so no data moves. See
+[Authentication](#authentication).
+
+**Boards are shareable.** Ownership moved from "one user per row" to a membership table, so
+several people can work one board live, with owner / editor / viewer roles. Joining is by
+secret link rather than by email invitation — the reasoning is in
+[Shared boards](#shared-boards), and it's a security argument rather than a shortcut.
+
+**Team members can't be invented.** An earlier version let you type a name and get an
+assignable person who existed nowhere. Now a member row is created by a database trigger
+when somebody actually joins, and a `CHECK` constraint stops any other kind existing.
 
 ---
 
 ## Quick start
 
 ```zsh
-git clone https://github.com/<you>/Task-Board-Project.git
+git clone https://github.com/xenanwen/Task-Board-Project.git
 cd Task-Board-Project
 npm install
 cp .env.local.example .env.local   # then fill in the two values (see below)
@@ -28,11 +50,23 @@ same instructions instead of a blank page.
 ### Supabase setup (5 minutes)
 
 1. Create a free project at [supabase.com](https://supabase.com).
-2. **SQL Editor → New query** → run these in order. Both are idempotent, so
-   re-running either is safe:
-   1. [`supabase/schema.sql`](supabase/schema.sql) — tables, RLS, triggers
+2. **SQL Editor → New query** → run these **in this order**. Each is idempotent, so
+   re-running any of them is safe — but the order matters, because each migration
+   replaces policies and functions the previous one created:
+   1. [`supabase/schema.sql`](supabase/schema.sql) — tables, RLS, grants, triggers
    2. [`supabase/002_collaboration.sql`](supabase/002_collaboration.sql) — shared
-      boards, invites, and the migration of any existing rows onto a board
+      boards, invite links, membership-based policies, and migration of any
+      existing rows onto a board
+   3. [`supabase/003_real_members.sql`](supabase/003_real_members.sql) — team
+      members become real accounts: a trigger creates one when somebody joins, and
+      hand-invented placeholder people are removed
+
+   > Running `schema.sql` again **after** `002` would restore the old single-user
+   > policies and break sharing. If you ever need to reset, run all three in order.
+
+   Then confirm the result with [`supabase/verify.sql`](supabase/verify.sql) — a
+   single query returning `PASS` / `FAIL` for RLS, grants, orphaned rows and
+   board ownership.
 3. **Authentication → Sign In / Providers**:
    - enable **Anonymous sign-ins** — without this there are no guest sessions
    - enable **Email**, and leave **Confirm email** on
@@ -66,7 +100,7 @@ same instructions instead of a blank page.
 | `npm run build` | Typecheck, then production build to `dist/` |
 | `npm run preview` | Serve the production build locally |
 | `npm run typecheck` | `tsc --noEmit` |
-| `npm test` | 145 assertions over ordering maths, filters, dates, validation and invite links |
+| `npm test` | 159 assertions over ordering maths, filters, dates, validation, invite links and board access |
 | `npm run check` | typecheck + tests + build — run this before pushing |
 
 ---
@@ -229,9 +263,10 @@ is **optimistic**: React state updates first, the request goes out, and on failu
 exact pre-change snapshot is restored and a dismissible message appears. That is what
 makes dragging feel instant.
 
-A Postgres change feed filtered to `user_id=eq.<guest>` keeps other tabs in sync.
-Realtime events trigger a debounced refetch, suppressed while our own writes are in
-flight so they can't clobber an optimistic update mid-request.
+A Postgres change feed filtered to `board_id=eq.<board>` keeps collaborators and other
+tabs in sync. Realtime events trigger a debounced refetch, suppressed while our own writes
+are in flight so they can't clobber an optimistic update mid-request. `tasks` and
+`board_members` are the published tables; everything else loads when a panel opens.
 
 ### Card ordering: fractional indexing
 
@@ -270,17 +305,25 @@ the neighbouring card.
 
 Ten tables, all with RLS enabled and forced. Base DDL in
 [`supabase/schema.sql`](supabase/schema.sql), sharing in
-[`supabase/002_collaboration.sql`](supabase/002_collaboration.sql).
+[`supabase/002_collaboration.sql`](supabase/002_collaboration.sql), real members in
+[`supabase/003_real_members.sql`](supabase/003_real_members.sql).
 
 | Table | Purpose |
 | --- | --- |
-| `tasks` | id, title, description, status, priority, due_date, position, timestamps |
-| `members` | Lightweight team members (name + colour) — not auth users |
-| `labels` | User-defined tags with colours |
+| `boards` | A board and its owner |
+| `board_members` | Who may see or edit a board, and their role — the access-control table |
+| `board_invites` | Secret join tokens, with expiry, use cap and revocation |
+| `tasks` | board_id, title, description, status, priority, due_date, position, timestamps |
+| `members` | Assignable people. Created by trigger when someone joins; always linked to a real account |
+| `labels` | User-defined tags with colours, unique per board |
 | `task_assignees` | Task ↔ member, many-to-many |
 | `task_labels` | Task ↔ label, many-to-many |
 | `comments` | Thread on a task, optional member as author |
 | `activity` | Append-only history, written by triggers |
+
+`user_id` survives on the content tables as **authorship** — who created the row — not as
+ownership. That's what keeps comment and activity attribution meaningful once a board has
+several people on it. Access is decided by `board_id` and `board_members`.
 
 `status` and `priority` are `text` with `CHECK` constraints rather than Postgres enums —
 same safety, but adding a value later is a one-line migration instead of `ALTER TYPE`.
@@ -306,29 +349,44 @@ not read a single row. Guests call `signInAnonymously()` first, which upgrades t
 `authenticated`. This is why hitting the REST API with just the anon key returns
 `401 permission denied`: that is the model working, not a bug.
 
-- Every table has `user_id uuid NOT NULL DEFAULT auth.uid()`. The client never chooses
-  whose row it is writing — the database fills it in.
-- One policy per table: `USING (user_id = (select auth.uid()))` **and**
-  `WITH CHECK (...)`. Both are required; `USING` alone would let you rewrite a row's
-  `user_id` and hand it to someone else.
-- Child tables (`comments`, `task_assignees`, `task_labels`) additionally require
-  `owns_task(task_id)`, so a crafted request can't attach a comment to a stranger's
-  task while still setting its own `user_id`.
-- `activity` has **no** UPDATE or DELETE policy — history can't be rewritten through
-  the API. Cascading deletes still clean up, because cascades run outside RLS.
-- `(select auth.uid())` rather than bare `auth.uid()` so Postgres evaluates it once per
+Access is decided by **board membership**, split by operation:
+
+- **Read** — `USING (is_board_member(board_id))`, so any member including a viewer.
+- **Write** — `WITH CHECK (can_edit_board(board_id))` on insert, and both clauses on
+  update. Viewers fail here at the database, not merely in the UI.
+- **Board itself** — rename and delete require `is_board_owner(id)`.
+
+Details that matter:
+
+- Those three helpers are **`SECURITY DEFINER`**, and they have to be. The policy *on*
+  `board_members` needs to read `board_members`; through RLS that re-enters the same
+  policy and Postgres raises *"infinite recursion detected in policy for relation
+  board_members"*. A definer function reads with RLS bypassed and breaks the cycle. Each
+  returns a single boolean about the calling user, so nothing leaks.
+- Both `USING` and `WITH CHECK` are set on updates. `USING` alone would let you rewrite a
+  row's `board_id` and move it to a board you happen to belong to.
+- `board_id` on child rows (`comments`, `task_assignees`, `task_labels`) is overwritten by
+  a **`BEFORE` trigger** that reads it off the parent task. Whatever the client sends is
+  discarded, so a child row can't be filed under a different board than its parent.
+- `activity` has **no** UPDATE or DELETE policy — history can't be rewritten through the
+  API. Cascading deletes still clean up, because cascades run outside RLS.
+- `board_invites` has **no read policy for non-owners**. Redemption goes through a
+  `SECURITY DEFINER` RPC, so a token can't be probed for existence over REST.
+- `(select auth.uid())` rather than bare `auth.uid()`, so Postgres evaluates it once per
   statement instead of once per row.
-- Activity rows are written by `SECURITY DEFINER` triggers, so the log can't drift out
-  of sync with the data even if the client forgets to write it.
+- Activity rows are written by `SECURITY DEFINER` triggers, so the log can't drift out of
+  sync with the data even if the client forgets to write it.
+- `members` carries `CHECK (auth_user_id is not null)` — invented people are impossible at
+  the database level, not just absent from the UI.
 
 ### Verifying isolation
 
 ```sql
--- 1. RLS is on. Should return rowsecurity = true for all seven tables.
+-- 1. RLS is on. Should return rowsecurity = true for all ten tables.
 select tablename, rowsecurity from pg_tables
 where schemaname = 'public' order by tablename;
 
--- 2. Grants are right: seven rows for `authenticated`, ZERO rows for `anon`.
+-- 2. Grants are right: ten rows for `authenticated`, ZERO rows for `anon`.
 select grantee, table_name,
        string_agg(privilege_type, ', ' order by privilege_type) as privs
 from information_schema.role_table_grants
@@ -346,10 +404,14 @@ curl -sS -w "\nHTTP %{http_code}\n" \
 # → 401, permission denied for table tasks
 ```
 
+Or just run [`supabase/verify.sql`](supabase/verify.sql), which returns both of those as
+`PASS` / `FAIL` rows along with orphan and board-ownership checks.
+
 **In the app** — open the board, note the id under **Team → This guest session**, add some
 tasks. Open the same URL in a different browser or a private window: a new guest id, an
 empty board, no trace of the first session's tasks. Log in as an account on both instead
-and the same board appears in each.
+and the same board appears in each. Share a link to a second account and both see the same
+board, with a drag in one appearing in the other in well under a second.
 
 ---
 
@@ -362,16 +424,21 @@ states, responsive layout.
 **Accounts** — an opening screen offering log in, sign up, or a guest session; email
 confirmation; sign out; and a guest→account upgrade that keeps the existing board.
 
+**Sharing** — multiple boards per account with a switcher, invite links with roles,
+expiry, use caps and revocation, a people-with-access list, and a genuinely read-only
+viewer mode (drag sensors off, composer gone, detail fields in a `disabled` fieldset).
+
 **Also built:**
 
-- Team members with colour avatars; multiple assignees per task, stacked on the card
+- Team members with colour avatars — real accounts only, created when someone joins;
+  multiple assignees per task, stacked on the card
 - Task detail drawer with a comment thread
 - Activity timeline — "Moved from To Do → In Progress · 2 hours ago", generated by DB triggers
 - Custom labels, multiple per task, with board filtering
 - Due-date badges that escalate: overdue (red) → today (amber) → within 2 days → later.
   Completed tasks keep the date but drop the alarm colouring
 - Search across title and description, plus priority / assignee / label filters
-- Header stats: total, done with percentage, overdue
+- Header stats: total, done, overdue
 - Keyboard shortcuts: <kbd>n</kbd> new task, <kbd>/</kbd> focus search, <kbd>Esc</kbd> close
 - Inline quick-add per column that stays open for adding several in a row
 
@@ -383,8 +450,11 @@ The palette and type come from a physical notebook: cream stock (`#faf6ec`), fai
 rules every 28px, a red margin line, ink-blue type. Column accents are borrowed from
 ballpoint and highlighter colours rather than the usual SaaS blues.
 
-Type is three faces with one job each — **Fraunces** for display, **Inter** for UI,
-**Caveat** for handwritten notes and empty states.
+Type is three faces with one job each — **ZCOOL KuaiLe** for display, **Inter** for UI
+and for the column headings, **Caveat** for handwritten notes and empty states. ZCOOL
+KuaiLe ships a single weight, so every display rule pins `font-weight: 400` and
+`base.css` sets `font-synthesis-weight: none` — asking for a bold it doesn't have would
+get a smeared synthetic one.
 
 The ruled background uses `background-attachment: local`, so the lines scroll with the
 content the way lines on a real page do. Columns are sunken and tinted; cards are
@@ -432,11 +502,11 @@ protects the data.
 - **Debounced refetch instead of merging realtime payloads.** Merging individual
   `postgres_changes` events into local state is fiddly and easy to get subtly wrong;
   a 400ms refetch is a few extra kilobytes and is always correct.
-- **Two overlapping ideas of "member".** `members` are assignable names on a card;
-  `board_members` are accounts with access. Joining by invite links the two by creating a
-  `members` row with `auth_user_id` set, so a new arrival is immediately assignable — but
-  you can still assign work to someone who has no account at all, which is often what you
-  want on a small team.
+- **Two tables both called "member", for different jobs.** `board_members` is access
+  control; `members` is who you can put on a card. They're kept in step by a trigger, so
+  joining a board makes you assignable immediately. The cost is that you can no longer
+  assign work to someone without an account — deliberate, since the alternative was a team
+  list containing people who don't exist.
 - **Collaboration is link-based, not email-based.** See the sharing section for why —
   briefly, an email lookup needs `service_role` server-side and leaks who has an account.
   Emailing the link is a thin layer on top of what's here, not a redesign.
