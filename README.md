@@ -7,12 +7,11 @@ One of my design changes to the original requirements was to not have the board 
 - Create an account
 - Login
 
-**Live demo:** _Vercel URL will be here after deploying_
+**Live demo:** (https://scribbly-gold.vercel.app)
 
-<!-- Take a screenshot of the board once it's running, save it as docs/screenshot.png,
-     and uncomment the line below. Graders look at the README first.
-![Scribbly: four columns on a cream ruled-paper background](docs/screenshot.png)
--->
+
+![Scribbly: four columns![Uploading Screenshot 2026-07-25 at 8.15.46 PM.png…]()
+ on a cream ruled-paper background](docs/screenshot.png)
 
 
 ---
