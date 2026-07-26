@@ -40,7 +40,7 @@ when somebody actually joins, and a `CHECK` constraint stops any other kind exis
 Node **20.19+** or **22.12+** — Vite 8's floor.
 
 ```zsh
-git clone https://github.com/xenanwen/Task-Board-Project.git
+git clone https://github.com/xenanwen/Scribbly.git
 cd Task-Board-Project
 npm install
 cp .env.local.example .env.local   # then fill in the two values (see below)
