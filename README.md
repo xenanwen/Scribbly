@@ -2,6 +2,11 @@
 
 A Kanban board themed by a paper notebook. Four columns, drag-and-drop between them, and three ways in — log in, create an account, or start as a guest with no sign-up at all. Everything persists in Supabase behind Row Level Security.
 
+One of my design changes to the original requirements was to not have the board automatically open a guest session. I changed it so when the user opens the web app, the screen will show 3 possible paths: 
+- Start a guest session (and create an account later)
+- Create an account
+- Login
+
 **Live demo:** _Vercel URL will be here after deploying_
 
 <!-- Take a screenshot of the board once it's running, save it as docs/screenshot.png,
@@ -426,12 +431,6 @@ protects the data.
 
 ## Trade-offs
 
-- **No backend.** The brief allows calling Supabase directly, and RLS makes a proxy
-  redundant for this data model. A Go API would earn its place once there's work that
-  can't be expressed as a policy — scheduled digests, webhooks, third-party calls.
-- **Debounced refetch instead of merging realtime payloads.** Merging individual
-  `postgres_changes` events into local state is fiddly and easy to get subtly wrong;
-  a 400ms refetch is a few extra kilobytes and is always correct.
 - **Two overlapping ideas of "member".** `members` are assignable names on a card;
   `board_members` are accounts with access. Joining by invite links the two by creating a
   `members` row with `auth_user_id` set, so a new arrival is immediately assignable — but
