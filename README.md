@@ -10,8 +10,7 @@ One of my design changes to the original requirements was to not have the board 
 **Live demo:** (https://scribbly-gold.vercel.app)
 
 
-![Scribbly: four columns![Uploading Screenshot 2026-07-25 at 8.15.46 PM.png…]()
- on a cream ruled-paper background](docs/screenshot.png)
+(Uploading Screenshot 2026-07-25 at 8.15.46 PM.png…)
 
 
 ---
@@ -47,7 +46,7 @@ same instructions instead of a blank page.
 
    ```
    VITE_SUPABASE_URL=https://xxxxxxxx.supabase.co
-   VITE_SUPABASE_ANON_KEY=sb_publishable_...
+   VITE_SUPABASE_ANON_KEY=sb_publishable_BL-Ck4ScB2Nf76_F90qRGg_bhrS2eEM
    ```
 
    The URL must be the bare origin — no `/rest/v1`, no trailing slash. supabase-js appends
