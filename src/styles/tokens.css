@@ -44,7 +44,11 @@
   /* ---- Typography ----------------------------------------------------- */
   --font-ui: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI',
     sans-serif;
-  --font-display: 'Fraunces', 'Iowan Old Style', Georgia, serif;
+  /* ZCOOL KuaiLe ships a single weight (400). Anything asking for 600/700 gets
+     synthesised into a smeared faux-bold, so every display rule below pins
+     weight 400 and base.css disables synthesis outright. Fallbacks are sans,
+     not serif — a serif fallback flashes visibly while the webfont loads. */
+  --font-display: 'ZCOOL KuaiLe', 'Trebuchet MS', 'Avenir Next', sans-serif;
   --font-hand: 'Caveat', 'Bradley Hand', cursive;
   --font-mono: ui-monospace, 'SF Mono', Menlo, monospace;
 

@@ -23,9 +23,17 @@ interface Props {
   onLogin: (email: string, password: string) => Promise<void>
   onSignUp: (email: string, password: string) => Promise<{ needsConfirmation: boolean }>
   onResend: (email: string) => Promise<void>
+  /** True when an ?invite= token is waiting to be redeemed after sign-in. */
+  invitePending?: boolean
 }
 
-export function HomeScreen({ onContinueAsGuest, onLogin, onSignUp, onResend }: Props) {
+export function HomeScreen({
+  onContinueAsGuest,
+  onLogin,
+  onSignUp,
+  onResend,
+  invitePending = false,
+}: Props) {
   const [mode, setMode] = useState<Mode>('choose')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -108,12 +116,14 @@ export function HomeScreen({ onContinueAsGuest, onLogin, onSignUp, onResend }: P
           <p className="cover__tagline">everything you owe the week, on one page</p>
         </header>
 
-        {/* The "this notebook belongs to" line from a school exercise book.
-            Decorative, and it sets the theme before you read a single control. */}
-        <div className="nameplate" aria-hidden="true">
-          <span className="nameplate__label">This notebook belongs to</span>
-          <span className="nameplate__rule" />
-        </div>
+        {/* Arriving from an invite link: say so, or the sign-in wall looks like
+            the link simply didn't work. */}
+        {invitePending && (
+          <p className="invite-banner">
+            You've been invited to a board. Log in or create an account and you'll go straight
+            there — a guest session works too.
+          </p>
+        )}
 
         {mode === 'choose' && (
           <div className="cover__choices">
@@ -291,6 +301,8 @@ export function HomeScreen({ onContinueAsGuest, onLogin, onSignUp, onResend }: P
 
       <p className="cover__footer">
         Built with React, TypeScript and Supabase · your data is protected by Row Level Security
+        <br />
+        Xena Nguyen
       </p>
     </main>
   )

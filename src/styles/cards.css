@@ -55,6 +55,16 @@
   opacity: 0.72;
 }
 
+/* Viewer access: the card is still clickable to read, just not draggable, so
+   the grab cursor would be a lie. */
+.card--readonly {
+  cursor: pointer;
+}
+
+.card--readonly:active {
+  cursor: pointer;
+}
+
 .card--done .card__title {
   color: var(--ink-soft);
 }

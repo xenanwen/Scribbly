@@ -28,6 +28,7 @@ interface Props {
   onQuickAdd: (status: Status, title: string) => void
   onClearFilters: () => void
   onOpenComposer: (status: Status) => void
+  readOnly?: boolean
 }
 
 export function Column({
@@ -44,8 +45,13 @@ export function Column({
   onQuickAdd,
   onClearFilters,
   onOpenComposer,
+  readOnly = false,
 }: Props) {
-  const { setNodeRef } = useDroppable({ id: status, data: { type: 'column', status } })
+  const { setNodeRef } = useDroppable({
+    id: status,
+    data: { type: 'column', status },
+    disabled: readOnly,
+  })
   const [adding, setAdding] = useState(false)
 
   return (
@@ -58,14 +64,16 @@ export function Column({
         <span className="column__rule" style={{ background: accent }} />
         <h2 className="column__title">{title}</h2>
         <span className="column__count">{tasks.length}</span>
-        <button
-          className="column__add"
-          onClick={() => onOpenComposer(status)}
-          aria-label={`Add a task to ${title}`}
-          title={`Add a task to ${title}`}
-        >
-          <PlusIcon />
-        </button>
+        {!readOnly && (
+          <button
+            className="column__add"
+            onClick={() => onOpenComposer(status)}
+            aria-label={`Add a task to ${title}`}
+            title={`Add a task to ${title}`}
+          >
+            <PlusIcon />
+          </button>
+        )}
       </header>
       <p className="column__hint">{hint}</p>
 
@@ -78,6 +86,7 @@ export function Column({
               members={members}
               labels={labels}
               onOpen={onOpen}
+              readOnly={readOnly}
             />
           ))}
         </SortableContext>
@@ -88,12 +97,13 @@ export function Column({
             filtered={filtered}
             onClear={onClearFilters}
             onAdd={() => setAdding(true)}
+            readOnly={readOnly}
           />
         )}
 
         {isDraggingOver && tasks.length === 0 && <div className="drop-hint">Drop here</div>}
 
-        {adding ? (
+        {readOnly ? null : adding ? (
           <QuickAdd
             onCancel={() => setAdding(false)}
             onSubmit={(value) => {

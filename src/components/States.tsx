@@ -45,11 +45,13 @@ export function EmptyColumn({
   filtered,
   onClear,
   onAdd,
+  readOnly = false,
 }: {
   status: string
   filtered: boolean
   onClear: () => void
   onAdd: () => void
+  readOnly?: boolean
 }) {
   if (filtered) {
     return (
@@ -75,7 +77,7 @@ export function EmptyColumn({
       <DoodleClip />
       <p className="empty__text">{line}</p>
       <p className="empty__sub">{sub}</p>
-      {status === 'todo' && (
+      {status === 'todo' && !readOnly && (
         <button className="link-btn" onClick={onAdd}>
           Add a task
         </button>

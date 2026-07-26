@@ -1,5 +1,14 @@
 import { STATUSES } from './types'
-import type { Filters, Priority, Status, Task, TaskRow } from './types'
+import type {
+  BoardMember,
+  Filters,
+  Member,
+  Priority,
+  Role,
+  Status,
+  Task,
+  TaskRow,
+} from './types'
 
 /* ==========================================================================
    Pure board logic. No React, no network — everything here is a function of
@@ -196,6 +205,39 @@ export function computeStats(tasks: Task[]): Stats {
     done,
     overdue,
     percentDone: total === 0 ? 0 : Math.round((done / total) * 100),
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Member access state.
+
+   A Member is created automatically when someone joins a board, and is kept
+   when they leave — otherwise a card would silently lose its assignee and the
+   activity log would grow holes. So "is this person still on the board?" is a
+   question about board_members, not about the Member row.
+   -------------------------------------------------------------------------- */
+
+export type MemberAccess = 'active' | 'revoked'
+
+export function memberAccess(member: Member, access: BoardMember[]): MemberAccess {
+  if (!member.auth_user_id) return 'revoked'
+  return access.some((a) => a.user_id === member.auth_user_id) ? 'active' : 'revoked'
+}
+
+/** The member's role on the board, or null once their access is gone. */
+export function memberRole(member: Member, access: BoardMember[]): Role | null {
+  if (!member.auth_user_id) return null
+  return access.find((a) => a.user_id === member.auth_user_id)?.role ?? null
+}
+
+/** Sort the roster: people still on the board first, then by name. Keeps the
+ *  useful half of the list at the top once people start leaving. */
+export function byAccessThenName(access: BoardMember[]) {
+  return (a: Member, b: Member): number => {
+    const aActive = memberAccess(a, access) === 'active'
+    const bActive = memberAccess(b, access) === 'active'
+    if (aActive !== bActive) return aActive ? -1 : 1
+    return a.name.localeCompare(b.name)
   }
 }
 

@@ -28,52 +28,31 @@
 }
 
 .cover__head {
+  /* Same hairline as .cover__fineprint's border-top, so the sheet reads as
+     three banded sections rather than one long column of text. */
+  padding-bottom: var(--sp-3);
+  border-bottom: 1px solid var(--rule);
   margin-bottom: var(--sp-5);
 }
 
 .cover__title {
   font-family: var(--font-display);
-  font-size: 2.25rem;
-  font-weight: 700;
-  letter-spacing: -0.03em;
-  line-height: 1.05;
+  font-size: 2.50rem;
+  font-weight: 400;
+  letter-spacing: 0;
+  line-height: 1.1;
 }
 
 .cover__tagline {
   font-family: var(--font-hand);
-  font-size: 1.1875rem;
+  font-size: 1.5rem;
   color: var(--ink-soft);
-  margin-top: 4px;
-}
-
-/* ---- "This notebook belongs to ___" ------------------------------------- */
-
-.nameplate {
-  display: flex;
-  align-items: baseline;
-  gap: var(--sp-2);
-  margin-bottom: var(--sp-5);
-  padding-bottom: var(--sp-1);
-}
-
-.nameplate__label {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--ink-faint);
-  white-space: nowrap;
-}
-
-.nameplate__rule {
-  flex: 1;
-  height: 1px;
-  background: repeating-linear-gradient(
-    to right,
-    var(--rule-strong) 0,
-    var(--rule-strong) 4px,
-    transparent 4px,
-    transparent 7px
-  );
+  /* Negative, to close the gap the display font's line box leaves beneath the
+     title. Caveat sits high inside its own em box, so it tucks up without its
+     ascenders reaching the letterforms above. line-height is pulled in too —
+     at this size the default line box would swallow most of the tuck. */
+  line-height: 1.15;
+  margin-top: -5px;
 }
 
 /* ---- The three numbered choices ---------------------------------------- */
@@ -185,7 +164,7 @@
 .cover__formTitle {
   font-family: var(--font-display);
   font-size: var(--fs-lg);
-  font-weight: 600;
+  font-weight: 400;
 }
 
 .cover__actions {
@@ -243,6 +222,21 @@
   color: var(--ink-faint);
   text-align: center;
   max-width: 448px;
+  /* On top of .cover's own flex gap, to sit the credits further clear of the
+     sheet. The signature below keeps its negative margin, so the two lines move
+     down together as one block. */
+  margin-top: var(--sp-3);
+}
+
+/* Set in the handwriting face — it's a signature, so it may as well look like
+   one. `.cover` is a flex column with a gap, hence the negative margin to sit
+   this closer to the line above than the gap would allow. */
+.cover__signature {
+  font-family: var(--font-hand);
+  font-size: 1.0625rem;
+  color: var(--ink-faint);
+  text-align: center;
+  margin-top: calc(var(--sp-4) * -1 + 2px);
 }
 
 /* ---- Password strength meter ------------------------------------------- */
@@ -402,7 +396,176 @@
   width: 100%;
 }
 
+/* ==========================================================================
+   Sharing: board switcher, invite links, viewer notice
+   ========================================================================== */
+
+.invite-banner {
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+  color: var(--ink-soft);
+  background: var(--info-tint);
+  border: 1px solid rgba(91, 124, 153, 0.28);
+  border-radius: var(--r-md);
+  padding: var(--sp-2) var(--sp-3);
+  margin-bottom: var(--sp-4);
+}
+
+/* ---- Board switcher ------------------------------------------------------ */
+
+.switcher__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.switcher__name {
+  font-weight: 550;
+  color: var(--ink);
+  max-width: 168px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.switcher__role {
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-soft);
+  background: rgba(35, 48, 61, 0.08);
+  border-radius: var(--r-full);
+  padding: 1px 6px;
+  flex: none;
+}
+
+.switcher__menu {
+  min-width: 236px;
+}
+
+.switcher__group {
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--ink-faint);
+  padding: var(--sp-2) var(--sp-2) 3px;
+}
+
+.switcher__item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  text-align: left;
+  padding: 6px var(--sp-2);
+  border-radius: var(--r-sm);
+  font-size: var(--fs-sm);
+  color: var(--ink);
+  transition: background var(--dur-fast) var(--ease);
+}
+
+.switcher__item:hover {
+  background: rgba(35, 48, 61, 0.06);
+}
+
+.switcher__item.is-on {
+  font-weight: 550;
+}
+
+.switcher__tick {
+  width: 12px;
+  flex: none;
+  color: var(--accent);
+  font-size: 11px;
+}
+
+.switcher__itemName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.switcher__new {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 7px var(--sp-2);
+  margin-top: 3px;
+  border-top: 1px solid var(--rule);
+  border-radius: 0 0 var(--r-sm) var(--r-sm);
+  font-size: var(--fs-sm);
+  color: var(--ink-faint);
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+
+.switcher__new:hover {
+  background: rgba(35, 48, 61, 0.05);
+  color: var(--ink);
+}
+
+.switcher__form {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: var(--sp-2);
+  border-top: 1px solid var(--rule);
+}
+
+/* ---- Invite links -------------------------------------------------------- */
+
+.invite-token {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-soft);
+  background: var(--paper-tint);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-sm);
+  padding: 4px 6px;
+  /* One line with an ellipsis: the token is long and unreadable anyway, and the
+     Copy button is what people actually use. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.roster__sub {
+  display: block;
+  font-style: normal;
+  font-size: var(--fs-xs);
+  font-weight: 400;
+  color: var(--ink-faint);
+  overflow-wrap: anywhere;
+}
+
+/* ---- View-only notice ---------------------------------------------------- */
+
+.viewer-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: var(--sp-4);
+  padding: 9px var(--sp-3);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+  color: #8a6a25;
+  background: var(--warn-tint);
+  border: 1px solid rgba(197, 138, 60, 0.34);
+  border-radius: var(--r-md);
+}
+
 @media (max-width: 720px) {
+  .switcher__name {
+    max-width: 110px;
+  }
+
   .cover {
     justify-content: flex-start;
     padding-top: var(--sp-6);

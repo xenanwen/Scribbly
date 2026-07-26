@@ -27,13 +27,23 @@ interface Props {
   onOpen: (id: string) => void
   /** True for the copy rendered inside DragOverlay. */
   overlay?: boolean
+  /** Viewers can open a card but not move it. */
+  readOnly?: boolean
 }
 
-function TaskCardInner({ task, members, labels, onOpen, overlay = false }: Props) {
+function TaskCardInner({
+  task,
+  members,
+  labels,
+  onOpen,
+  overlay = false,
+  readOnly = false,
+}: Props) {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } =
     useSortable({
       id: task.id,
       data: { type: 'task', status: task.status },
+      disabled: readOnly,
     })
 
   const urgency = urgencyOf(task.due_date, task.status)
@@ -42,6 +52,7 @@ function TaskCardInner({ task, members, labels, onOpen, overlay = false }: Props
 
   const classes = [
     'card',
+    readOnly && 'card--readonly',
     task.status === 'done' && 'card--done',
     urgency === 'overdue' && 'card--overdue',
     isDragging && 'card--dragging',
@@ -61,7 +72,7 @@ function TaskCardInner({ task, members, labels, onOpen, overlay = false }: Props
           : { transform: CSS.Translate.toString(transform), transition }
       }
       onClick={() => onOpen(task.id)}
-      {...(overlay ? {} : listeners)}
+      {...(overlay || readOnly ? {} : listeners)}
     >
       {/* Colour-coded spine: label colour if the task has one, else priority. */}
       <span
@@ -99,7 +110,7 @@ function TaskCardInner({ task, members, labels, onOpen, overlay = false }: Props
         </div>
         <div className="card__right">
           <AvatarStack members={assignees} />
-          {!overlay && (
+          {!overlay && !readOnly && (
             <button
               ref={setActivatorNodeRef}
               className="card__grip"

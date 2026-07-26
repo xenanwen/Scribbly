@@ -1,13 +1,15 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Header } from './components/Header'
 import { Board } from './components/Board'
 import { TaskComposer } from './components/TaskComposer'
 import { TaskDetail } from './components/TaskDetail'
 import { TeamPanel } from './components/TeamPanel'
+import { SharePanel } from './components/SharePanel'
 import { HomeScreen } from './components/HomeScreen'
 import { FinishUpgrade } from './components/FinishUpgrade'
 import { BoardSkeleton, ErrorState, NoticeBar, SetupState } from './components/States'
 import { useBoard } from './hooks/useBoard'
+import { useBoards } from './hooks/useBoards'
 import { useSession } from './hooks/useSession'
 import {
   cancelUpgrade,
@@ -21,6 +23,7 @@ import {
   signUp,
   startUpgrade,
 } from './lib/auth'
+import { clearInviteToken, readInviteToken, redeemInvite } from './lib/boards'
 import { friendlyError, isConfigured } from './lib/supabase'
 import { EMPTY_FILTERS } from './lib/types'
 import type { Filters, Status } from './lib/types'
@@ -38,7 +41,10 @@ import type { Filters, Status } from './lib/types'
 
    Nothing here reads or writes auth state directly. Forms call into lib/auth,
    Supabase emits an auth event, useSession picks it up, and this component
-   re-renders. One direction, no chance of the UI and the session disagreeing.
+   re-renders. One direction, so the UI can't disagree with the session.
+
+   The one piece of real URL handling is ?invite=<token>: held until there's a
+   session, redeemed, then stripped from the address bar.
    ========================================================================== */
 
 export default function App() {
@@ -46,30 +52,87 @@ export default function App() {
   const identity = session.identity
 
   const userId = session.status === 'signedIn' ? (identity?.userId ?? null) : null
-  // Don't start loading the board while an upgrade is mid-flight — that screen
-  // has no board on it.
-  const boardUserId = identity && !identity.upgradePending ? userId : null
-  const board = useBoard(boardUserId)
+  // Don't touch boards while an upgrade is mid-flight — that screen has none.
+  const activeUserId = identity && !identity.upgradePending ? userId : null
+
+  const boards = useBoards(activeUserId)
+  const { refresh: refreshBoards, select: selectBoard } = boards
+  const board = useBoard(boards.activeId)
 
   /* ---- UI state -------------------------------------------------------- */
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS)
   const [openTaskId, setOpenTaskId] = useState<string | null>(null)
   const [composerFor, setComposerFor] = useState<Status | null>(null)
   const [teamOpen, setTeamOpen] = useState(false)
+  const [shareOpen, setShareOpen] = useState(false)
   const [authError, setAuthError] = useState<string | null>(null)
+
+  /* ---- Invite handling ------------------------------------------------- */
+  const [pendingInvite, setPendingInvite] = useState<string | null>(() => readInviteToken())
+  const [joinError, setJoinError] = useState<string | null>(null)
+  const [joinedName, setJoinedName] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!pendingInvite || session.status !== 'signedIn' || identity?.upgradePending) return
+    let cancelled = false
+
+    void (async () => {
+      try {
+        const joinedBoardId = await redeemInvite(pendingInvite)
+        if (cancelled) return
+        const next = await refreshBoards()
+        selectBoard(joinedBoardId)
+        setJoinedName(next.find((b) => b.id === joinedBoardId)?.name ?? 'the board')
+      } catch (err) {
+        if (!cancelled) setJoinError(friendlyError(err))
+      } finally {
+        if (!cancelled) {
+          // Strip the token either way: a used or invalid link shouldn't sit in
+          // browser history, and a reload shouldn't retry it.
+          clearInviteToken()
+          setPendingInvite(null)
+        }
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [pendingInvite, session.status, identity?.upgradePending, refreshBoards, selectBoard])
+
+  /* ---- First board for a brand-new account ----------------------------- */
+  /* Guests are seeded at sign-in. A fresh email account has no board at all, so
+     give it the same starter content rather than an empty switcher. Attempted
+     once per session; a failure just leaves them with the empty state. */
+  const seedAttempted = useRef(false)
+  useEffect(() => {
+    if (!activeUserId || boards.state !== 'ready' || boards.boards.length > 0) return
+    if (pendingInvite || seedAttempted.current) return
+    seedAttempted.current = true
+    void (async () => {
+      await seedStarterBoard()
+      await refreshBoards()
+    })()
+  }, [activeUserId, boards.state, boards.boards.length, pendingInvite, refreshBoards])
 
   const openTask = useMemo(
     () => board.data.tasks.find((t) => t.id === openTaskId) ?? null,
     [board.data.tasks, openTaskId],
   )
 
-  // If the open task disappears (deleted here or in another tab), close cleanly
-  // rather than leaving an empty panel on screen.
   useEffect(() => {
     if (openTaskId && !openTask && board.loadState === 'ready') setOpenTaskId(null)
   }, [openTaskId, openTask, board.loadState])
 
-  const anyOverlayOpen = Boolean(openTaskId || composerFor || teamOpen)
+  // Close per-board overlays when the board changes underneath them.
+  useEffect(() => {
+    setOpenTaskId(null)
+    setComposerFor(null)
+    setShareOpen(false)
+    setFilters(EMPTY_FILTERS)
+  }, [boards.activeId])
+
+  const anyOverlayOpen = Boolean(openTaskId || composerFor || teamOpen || shareOpen)
 
   /* ---- Keyboard shortcuts ---------------------------------------------- */
   useEffect(() => {
@@ -96,8 +159,6 @@ export default function App() {
 
   /* ---- Auth actions ---------------------------------------------------- */
 
-  /* Errors are re-thrown after translation: HomeScreen renders them next to the
-     form that caused them, which is where the user is looking. */
   const asFriendly = (err: unknown): never => {
     throw new Error(friendlyError(err))
   }
@@ -105,8 +166,6 @@ export default function App() {
   const handleGuest = useCallback(async () => {
     try {
       const { isNew } = await continueAsGuest()
-      // A brand-new visitor gets a small starter board, so the first screen
-      // demonstrates the interaction instead of showing four empty columns.
       if (isNew) await seedStarterBoard()
     } catch (err) {
       asFriendly(err)
@@ -163,9 +222,11 @@ export default function App() {
 
   const handleSignOut = useCallback(async () => {
     setTeamOpen(false)
+    setShareOpen(false)
     setOpenTaskId(null)
     setComposerFor(null)
     setFilters(EMPTY_FILTERS)
+    seedAttempted.current = false
     try {
       await signOut()
     } catch (err) {
@@ -176,8 +237,8 @@ export default function App() {
   const handleResetGuest = useCallback(async () => {
     setTeamOpen(false)
     setFilters(EMPTY_FILTERS)
+    seedAttempted.current = false
     await resetGuestSession()
-    // Straight back into a fresh guest board rather than out to the home screen.
     try {
       const { isNew } = await continueAsGuest()
       if (isNew) await seedStarterBoard()
@@ -186,13 +247,17 @@ export default function App() {
     }
   }, [])
 
+  /** Guests can't create or share boards; send them to the upgrade prompt. */
+  const promptUpgrade = useCallback(() => {
+    setShareOpen(false)
+    setTeamOpen(true)
+  }, [])
+
   /* ---- Screens --------------------------------------------------------- */
 
   if (!isConfigured) return <SetupState />
 
-  if (session.status === 'booting') {
-    return <BootScreen note="opening your notebook…" />
-  }
+  if (session.status === 'booting') return <BootScreen note="opening your notebook…" />
 
   if (session.status === 'signedOut') {
     return (
@@ -201,11 +266,11 @@ export default function App() {
         onLogin={handleLogin}
         onSignUp={handleSignUp}
         onResend={handleResend}
+        invitePending={Boolean(pendingInvite)}
       />
     )
   }
 
-  // Email confirmed, password not set yet.
   if (identity?.upgradePending && identity.email) {
     return (
       <FinishUpgrade
@@ -218,20 +283,39 @@ export default function App() {
 
   if (!identity) return <BootScreen note="opening your notebook…" />
 
-  if (board.loadState === 'loading') {
-    return <BootScreen note="fetching your board…" />
+  if (pendingInvite) return <BootScreen note="opening the board you were invited to…" />
+
+  if (boards.state === 'error') {
+    return (
+      <ErrorState
+        message={boards.error ?? 'Could not load your boards.'}
+        onRetry={() => void refreshBoards()}
+      />
+    )
+  }
+
+  if (boards.state === 'loading' || (boards.boards.length === 0 && !joinError)) {
+    return <BootScreen note="setting up your board…" />
   }
 
   if (board.loadState === 'error') {
     return (
       <ErrorState
-        message={board.loadError ?? 'Could not load your board.'}
+        message={board.loadError ?? 'Could not load this board.'}
         onRetry={() => void board.refresh()}
       />
     )
   }
 
-  /* ---- Board ----------------------------------------------------------- */
+  if (board.loadState === 'loading') return <BootScreen note="fetching your board…" />
+
+  /* Don't render a board we can't identify. Deriving canWrite from a possibly
+     null `active` used to default the whole board to read-only during the brief
+     window after a refresh where activeId is set but the board list hasn't
+     caught up — which looked exactly like drag-and-drop silently breaking. */
+  if (!boards.active) return <BootScreen note="opening your board…" />
+
+  const canWrite = boards.active.role !== 'viewer'
 
   return (
     <div className="app">
@@ -246,10 +330,30 @@ export default function App() {
           onOpenTeam={() => setTeamOpen(true)}
           syncing={board.syncing}
           identity={identity}
+          boards={boards.boards}
+          activeBoard={boards.active}
+          onSelectBoard={selectBoard}
+          onCreateBoard={(name) => void boards.create(name)}
+          onCreateBoardBlocked={promptUpgrade}
+          onOpenShare={() => setShareOpen(true)}
         />
 
+        {joinedName && (
+          <NoticeBar
+            message={`You've joined ${joinedName}.`}
+            onDismiss={() => setJoinedName(null)}
+          />
+        )}
+        {joinError && <NoticeBar message={joinError} onDismiss={() => setJoinError(null)} />}
         {authError && <NoticeBar message={authError} onDismiss={() => setAuthError(null)} />}
+        {boards.notice && <NoticeBar message={boards.notice} onDismiss={boards.dismissNotice} />}
         {board.notice && <NoticeBar message={board.notice} onDismiss={board.dismissNotice} />}
+
+        {!canWrite && (
+          <div className="viewer-bar">
+            You have view-only access to this board. Ask the owner for edit access to make changes.
+          </div>
+        )}
 
         <Board
           data={board.data}
@@ -260,6 +364,7 @@ export default function App() {
           onClearFilters={() => setFilters(EMPTY_FILTERS)}
           moveTask={board.moveTask}
           rebalanceColumn={board.rebalanceColumn}
+          readOnly={!canWrite}
         />
 
         <footer className="app__foot">
@@ -270,7 +375,7 @@ export default function App() {
         </footer>
       </div>
 
-      {composerFor && (
+      {composerFor && canWrite && (
         <TaskComposer
           initialStatus={composerFor}
           members={board.data.members}
@@ -290,6 +395,7 @@ export default function App() {
           onDelete={(id) => void board.deleteTask(id)}
           onSetAssignees={(id, ids) => void board.setAssignees(id, ids)}
           onSetLabels={(id, ids) => void board.setLabels(id, ids)}
+          readOnly={!canWrite}
         />
       )}
 
@@ -298,15 +404,38 @@ export default function App() {
           members={board.data.members}
           labels={board.data.labels}
           tasks={board.data.tasks}
+          access={board.data.access}
           identity={identity}
           onClose={() => setTeamOpen(false)}
-          onCreateMember={(name, color) => void board.createMember(name, color)}
-          onDeleteMember={(id) => void board.deleteMember(id)}
           onCreateLabel={(name, color) => void board.createLabel(name, color)}
           onDeleteLabel={(id) => void board.deleteLabel(id)}
           onResetSession={() => void handleResetGuest()}
           onStartUpgrade={handleStartUpgrade}
           onSignOut={() => void handleSignOut()}
+          onOpenShare={() => {
+            setTeamOpen(false)
+            setShareOpen(true)
+          }}
+        />
+      )}
+
+      {shareOpen && boards.active && (
+        <SharePanel
+          board={boards.active}
+          members={board.data.members}
+          currentUserId={identity.userId}
+          isGuest={identity.isGuest}
+          onClose={() => setShareOpen(false)}
+          onRename={(name) => void boards.rename(boards.active!.id, name)}
+          onDelete={() => {
+            setShareOpen(false)
+            void boards.remove(boards.active!.id)
+          }}
+          onLeave={() => {
+            setShareOpen(false)
+            void boards.leave(boards.active!.id, identity.userId)
+          }}
+          onUpgradePrompt={promptUpgrade}
         />
       )}
     </div>

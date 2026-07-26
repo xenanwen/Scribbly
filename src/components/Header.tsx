@@ -1,9 +1,10 @@
 import { CheckRow, Popover } from './Popover'
+import { BoardSwitcher } from './BoardSwitcher'
 import { Avatar, PlusIcon, PriorityMark, SearchIcon } from './Primitives'
 import { PRIORITY_LABEL, computeStats } from '../lib/board'
 import { PRIORITIES } from '../lib/types'
 import type { Identity } from '../lib/auth'
-import type { Filters, Label, Member, Priority, Task } from '../lib/types'
+import type { Board, Filters, Label, Member, Priority, Task } from '../lib/types'
 
 /* ==========================================================================
    Masthead: identity, the summary stats, search and filters.
@@ -23,6 +24,12 @@ interface Props {
   onOpenTeam: () => void
   syncing: boolean
   identity: Identity
+  boards: Board[]
+  activeBoard: Board | null
+  onSelectBoard: (boardId: string) => void
+  onCreateBoard: (name: string) => void
+  onCreateBoardBlocked: () => void
+  onOpenShare: () => void
 }
 
 export function Header({
@@ -35,6 +42,12 @@ export function Header({
   onOpenTeam,
   syncing,
   identity,
+  boards,
+  activeBoard,
+  onSelectBoard,
+  onCreateBoard,
+  onCreateBoardBlocked,
+  onOpenShare,
 }: Props) {
   const stats = computeStats(tasks)
 
@@ -54,7 +67,7 @@ export function Header({
 
         <div className="ledger" aria-label="Board summary">
           <Figure value={stats.total} label={stats.total === 1 ? 'task' : 'tasks'} />
-          <Figure value={stats.done} label="done" tone="ok" note={`${stats.percentDone}%`} />
+          <Figure value={stats.done} label="done" tone="ok" />
           <Figure
             value={stats.overdue}
             label="overdue"
@@ -64,6 +77,15 @@ export function Header({
       </div>
 
       <div className="toolbar">
+        <BoardSwitcher
+          boards={boards}
+          active={activeBoard}
+          onSelect={onSelectBoard}
+          onCreate={onCreateBoard}
+          canCreate={!identity.isGuest}
+          onCreateBlocked={onCreateBoardBlocked}
+        />
+
         <div className="search">
           <span className="search__icon">
             <SearchIcon />
@@ -191,6 +213,11 @@ export function Header({
             <span className="team-btn__text">Team</span>
           </button>
 
+          <button className="btn btn--ghost btn--md" onClick={onOpenShare}>
+            <ShareIcon />
+            Share
+          </button>
+
           <button className="btn btn--primary btn--md" onClick={onNewTask}>
             <PlusIcon />
             New task
@@ -201,23 +228,29 @@ export function Header({
   )
 }
 
+function ShareIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" aria-hidden="true">
+      <circle cx="12" cy="3.5" r="2" stroke="currentColor" strokeWidth="1.4" />
+      <circle cx="4" cy="8" r="2" stroke="currentColor" strokeWidth="1.4" />
+      <circle cx="12" cy="12.5" r="2" stroke="currentColor" strokeWidth="1.4" />
+      <path d="m5.8 7 4.4-2.4M5.8 9l4.4 2.4" stroke="currentColor" strokeWidth="1.4" />
+    </svg>
+  )
+}
+
 function Figure({
   value,
   label,
   tone = 'default',
-  note,
 }: {
   value: number
   label: string
   tone?: 'default' | 'ok' | 'danger' | 'muted'
-  note?: string
 }) {
   return (
     <div className={`figure figure--${tone}`}>
-      <span className="figure__value">
-        {value}
-        {note && <em className="figure__note">{note}</em>}
-      </span>
+      <span className="figure__value">{value}</span>
       <span className="figure__label">{label}</span>
     </div>
   )

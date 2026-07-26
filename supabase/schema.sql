@@ -430,13 +430,10 @@ begin
     return;
   end if;
 
+  -- Just the user. Add teammates from the Team panel.
   insert into public.members (user_id, name, color)
   values (v_uid, 'You', '#d4756b')
   returning id into v_me;
-
-  insert into public.members (user_id, name, color)
-  values (v_uid, 'Sam Ito',   '#5b7c99'),
-         (v_uid, 'Ada Reyes', '#8a9a6b');
 
   insert into public.labels (user_id, name, color)
   values (v_uid, 'Design', '#9b7fb5') returning id into v_design;

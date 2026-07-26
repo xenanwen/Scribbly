@@ -36,6 +36,8 @@ interface Props {
   onDelete: (id: string) => void
   onSetAssignees: (taskId: string, memberIds: string[]) => void
   onSetLabels: (taskId: string, labelIds: string[]) => void
+  /** Viewers see the whole card but can change nothing. */
+  readOnly?: boolean
 }
 
 export function TaskDetail({
@@ -47,6 +49,7 @@ export function TaskDetail({
   onDelete,
   onSetAssignees,
   onSetLabels,
+  readOnly = false,
 }: Props) {
   const { comments, activity, loading, error, addComment, deleteComment } = useTaskThread(task.id)
   const [tab, setTab] = useState<'comments' | 'activity'>('comments')
@@ -85,6 +88,7 @@ export function TaskDetail({
           rows={1}
           maxLength={200}
           aria-label="Task title"
+          readOnly={readOnly}
           onChange={(e) => setTitle(e.target.value)}
           onBlur={commitTitle}
           onKeyDown={(e) => {
@@ -106,7 +110,7 @@ export function TaskDetail({
       }
       onClose={onClose}
       footer={
-        confirmDelete ? (
+        readOnly ? undefined : confirmDelete ? (
           <div className="confirm">
             <span className="confirm__text">Delete this task and its comments?</span>
             <div className="modal__actions">
@@ -132,6 +136,10 @@ export function TaskDetail({
         )
       }
     >
+      {/* A disabled fieldset switches off every control inside it in one go —
+          far more reliable than remembering to pass `disabled` to each field.
+          The tabs below sit outside it, so a viewer can still read the thread. */}
+      <fieldset className="plain" disabled={readOnly}>
       {/* ---- Properties ---------------------------------------------------- */}
       <section className="detail__section">
         <Row label="Column">
@@ -237,6 +245,7 @@ export function TaskDetail({
           onBlur={commitDescription}
         />
       </section>
+      </fieldset>
 
       {/* ---- Comments / Activity ------------------------------------------- */}
       <section className="detail__section">
@@ -272,6 +281,7 @@ export function TaskDetail({
             members={members}
             onAdd={addComment}
             onDelete={deleteComment}
+            readOnly={readOnly}
           />
         ) : (
           <Timeline activity={activity} />
@@ -297,11 +307,13 @@ function CommentThread({
   members,
   onAdd,
   onDelete,
+  readOnly = false,
 }: {
   comments: import('../lib/types').Comment[]
   members: Member[]
   onAdd: (body: string, authorId: string | null) => void
   onDelete: (id: string) => void
+  readOnly?: boolean
 }) {
   const [body, setBody] = useState('')
   const [authorId, setAuthorId] = useState<string | null>(members[0]?.id ?? null)
@@ -340,13 +352,15 @@ function CommentThread({
                     <time dateTime={c.created_at} title={new Date(c.created_at).toLocaleString()}>
                       {relativeTime(c.created_at)}
                     </time>
-                    <button
-                      className="comment__del"
-                      onClick={() => onDelete(c.id)}
-                      aria-label="Delete comment"
-                    >
-                      ×
-                    </button>
+                    {!readOnly && (
+                      <button
+                        className="comment__del"
+                        onClick={() => onDelete(c.id)}
+                        aria-label="Delete comment"
+                      >
+                        ×
+                      </button>
+                    )}
                   </div>
                   <p className="comment__text">{c.body}</p>
                 </div>
@@ -356,6 +370,7 @@ function CommentThread({
         </ul>
       )}
 
+      {readOnly ? null : (
       <div className="composer">
         {members.length > 0 && (
           <select
@@ -392,6 +407,7 @@ function CommentThread({
           </Button>
         </div>
       </div>
+      )}
     </div>
   )
 }

@@ -58,6 +58,8 @@ interface Props {
   onClearFilters: () => void
   moveTask: (id: string, status: Status, position: number) => Promise<void>
   rebalanceColumn: (status: Status) => Promise<void>
+  /** Viewers get the board without any way to change it. */
+  readOnly?: boolean
 }
 
 export function Board({
@@ -69,6 +71,7 @@ export function Board({
   onClearFilters,
   moveTask,
   rebalanceColumn,
+  readOnly = false,
 }: Props) {
   const [activeId, setActiveId] = useState<UniqueIdentifier | null>(null)
   const [overColumn, setOverColumn] = useState<Status | null>(null)
@@ -86,6 +89,11 @@ export function Board({
   const source = draft ?? visible
   const grouped = useMemo(() => groupByStatus(source), [source])
 
+  /* Sensors are created unconditionally, because they're hooks. Dragging is
+     switched off per-item instead — `disabled` on useSortable and useDroppable,
+     which is dnd-kit's actual API for this. (An earlier version passed
+     `enabled: false` in the sensor options; that isn't a real option and only
+     typechecked because a spread skips excess-property checking.) */
   const sensors = useSensors(
     // A few pixels of travel before a drag begins, so a tap still counts as a
     // click on the card.
@@ -284,6 +292,7 @@ export function Board({
             onQuickAdd={onQuickAdd}
             onClearFilters={onClearFilters}
             onOpenComposer={onOpenComposer}
+            readOnly={readOnly}
           />
         ))}
       </div>

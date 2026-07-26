@@ -1,58 +1,61 @@
 import { useState } from 'react'
 import { Drawer } from './Overlay'
 import { Avatar, Button, TrashIcon } from './Primitives'
-import { MEMBER_COLORS, nextMemberColor } from '../lib/board'
+import { byAccessThenName, memberAccess, memberRole, nextMemberColor } from '../lib/board'
 import { validateEmail } from '../lib/validate'
 import type { Identity } from '../lib/auth'
-import type { Label, Member, Task } from '../lib/types'
+import type { BoardMember, Label, Member, Task } from '../lib/types'
 
 /* ==========================================================================
-   Team & labels panel. Also the place where the guest session is explained,
-   since "why can't I see my tasks on my phone?" is the obvious question an
-   anonymous-auth app invites.
+   Team & labels panel. Also where the guest session is explained, since "why
+   can't I see my tasks on my phone?" is the obvious question an anonymous-auth
+   app invites.
+
+   The team list is READ-ONLY on purpose. There used to be a form here for
+   typing in a name and getting an assignable person who didn't exist anywhere.
+   Members are now created by a database trigger when someone actually joins the
+   board, so this list can only ever show real people — and a name on a card
+   always corresponds to somebody who was really there.
+
+   Adding people happens in the Share panel, by link.
    ========================================================================== */
 
 interface Props {
   members: Member[]
   labels: Label[]
   tasks: Task[]
+  /** Accounts with access right now, used to tell who has since left. */
+  access: BoardMember[]
   identity: Identity
   onClose: () => void
-  onCreateMember: (name: string, color: string) => void
-  onDeleteMember: (id: string) => void
   onCreateLabel: (name: string, color: string) => void
   onDeleteLabel: (id: string) => void
   onResetSession: () => void
   onStartUpgrade: (email: string) => Promise<void>
   onSignOut: () => void
+  onOpenShare: () => void
 }
 
 export function TeamPanel({
   members,
   labels,
   tasks,
+  access,
   identity,
   onClose,
-  onCreateMember,
-  onDeleteMember,
   onCreateLabel,
   onDeleteLabel,
   onResetSession,
   onStartUpgrade,
   onSignOut,
+  onOpenShare,
 }: Props) {
-  const [memberName, setMemberName] = useState('')
-  const [memberColor, setMemberColor] = useState(nextMemberColor(members.length))
   const [labelName, setLabelName] = useState('')
   const [labelColor, setLabelColor] = useState(nextMemberColor(labels.length + 3))
   const [confirmReset, setConfirmReset] = useState(false)
 
-  const addMember = () => {
-    if (!memberName.trim()) return
-    onCreateMember(memberName, memberColor)
-    setMemberName('')
-    setMemberColor(nextMemberColor(members.length + 1))
-  }
+  const roster = [...members].sort(byAccessThenName(access))
+  const activeCount = roster.filter((m) => memberAccess(m, access) === 'active').length
 
   const addLabel = () => {
     if (!labelName.trim()) return
@@ -69,55 +72,62 @@ export function TeamPanel({
 
   return (
     <Drawer title="Team & labels" subtitle="Board setup" onClose={onClose}>
-      {/* ---- Members ------------------------------------------------------- */}
+      {/* ---- Team (read-only) ---------------------------------------------- */}
       <section className="detail__section">
-        <h3 className="detail__h">Team members</h3>
+        <h3 className="detail__h">
+          Team
+          {activeCount > 0 && <span className="detail__hcount">{activeCount}</span>}
+        </h3>
         <p className="detail__muted">
-          Lightweight names to assign work to — not real accounts, so there's nobody to invite.
+          Everyone who has opened a share link for this board. You can assign work to any of
+          them.
         </p>
 
-        {members.length > 0 && (
+        {roster.length === 0 ? (
+          <p className="detail__muted">Nobody yet.</p>
+        ) : (
           <ul className="roster">
-            {members.map((m) => (
-              <li key={m.id} className="roster__row">
-                <Avatar member={m} size={28} showTooltip={false} />
-                <span className="roster__name">{m.name}</span>
-                <span className="roster__count">
-                  {taskCountFor(m.id) || 0} {taskCountFor(m.id) === 1 ? 'task' : 'tasks'}
-                </span>
-                <button
-                  className="icon-btn icon-btn--sm"
-                  onClick={() => onDeleteMember(m.id)}
-                  aria-label={`Remove ${m.name}`}
-                  title={`Remove ${m.name}`}
+            {roster.map((m) => {
+              const state = memberAccess(m, access)
+              const role = memberRole(m, access)
+              const isYou = m.auth_user_id === identity.userId
+              const count = taskCountFor(m.id)
+              return (
+                <li
+                  key={m.id}
+                  className={`roster__row${state === 'revoked' ? ' roster__row--gone' : ''}`}
                 >
-                  <TrashIcon />
-                </button>
-              </li>
-            ))}
+                  <Avatar member={m} size={28} showTooltip={false} />
+                  <span className="roster__name">
+                    {isYou ? 'You' : m.name}
+                    {m.email && <em className="roster__sub">{m.email}</em>}
+                  </span>
+                  <span className="roster__count">
+                    {state === 'revoked' ? (
+                      /* The row is kept on purpose: deleting it would strip this
+                         person off every card they were assigned to and leave
+                         gaps in the activity log. */
+                      <span className="roster__gone" title="Removed from this board">
+                        no longer has access
+                      </span>
+                    ) : (
+                      role
+                    )}
+                    {count > 0 && ` · ${count} ${count === 1 ? 'task' : 'tasks'}`}
+                  </span>
+                </li>
+              )
+            })}
           </ul>
         )}
 
-        <form
-          className="inline-form"
-          onSubmit={(e) => {
-            e.preventDefault()
-            addMember()
-          }}
-        >
-          <ColorPicker value={memberColor} onChange={setMemberColor} label="Member colour" />
-          <input
-            className="input input--sm"
-            value={memberName}
-            onChange={(e) => setMemberName(e.target.value)}
-            placeholder="Add a teammate…"
-            maxLength={60}
-            aria-label="New team member name"
-          />
-          <Button variant="primary" size="sm" type="submit" disabled={!memberName.trim()}>
-            Add
-          </Button>
-        </form>
+        {!identity.isGuest && (
+          <div className="inline-form">
+            <Button variant="ghost" size="sm" onClick={onOpenShare}>
+              Invite someone
+            </Button>
+          </div>
+        )}
       </section>
 
       {/* ---- Labels -------------------------------------------------------- */}
@@ -313,6 +323,18 @@ function UpgradeBox({ onStartUpgrade }: { onStartUpgrade: (email: string) => Pro
   )
 }
 
+/**
+ * Any colour, not a fixed palette.
+ *
+ * This is the native `<input type="color">` styled to look like a swatch,
+ * rather than a hand-built picker. The browser's own picker gets eyedroppers,
+ * hex entry, recent colours and full keyboard and screen-reader support for
+ * free — none of which a bespoke grid of ten dots would have.
+ *
+ * It also happens to match the database exactly: the column is
+ * `check (color ~ '^#[0-9a-fA-F]{6}$')`, and this input can only ever produce
+ * `#rrggbb`.
+ */
 function ColorPicker({
   value,
   onChange,
@@ -322,34 +344,14 @@ function ColorPicker({
   onChange: (c: string) => void
   label: string
 }) {
-  const [open, setOpen] = useState(false)
   return (
-    <div className="colorpick">
-      <button
-        type="button"
-        className="colorpick__current"
-        style={{ background: value }}
-        onClick={() => setOpen((v) => !v)}
-        aria-label={label}
-        aria-expanded={open}
-      />
-      {open && (
-        <div className="colorpick__grid">
-          {MEMBER_COLORS.map((c) => (
-            <button
-              key={c}
-              type="button"
-              className={`colorpick__dot${c === value ? ' is-on' : ''}`}
-              style={{ background: c }}
-              onClick={() => {
-                onChange(c)
-                setOpen(false)
-              }}
-              aria-label={c}
-            />
-          ))}
-        </div>
-      )}
-    </div>
+    <input
+      type="color"
+      className="colorpick__input"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      aria-label={label}
+      title={`${label} — ${value}`}
+    />
   )
 }

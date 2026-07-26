@@ -9,11 +9,56 @@ export type Status = (typeof STATUSES)[number]
 export const PRIORITIES = ['low', 'normal', 'high'] as const
 export type Priority = (typeof PRIORITIES)[number]
 
+/* ---- Boards & sharing ---------------------------------------------------- */
+
+export const ROLES = ['owner', 'editor', 'viewer'] as const
+export type Role = (typeof ROLES)[number]
+
+export interface Board {
+  id: string
+  name: string
+  owner_id: string
+  created_at: string
+  /** The calling user's role on this board, joined in from board_members. */
+  role: Role
+}
+
+/** A person with access to the board — an actual account, unlike Member. */
+export interface BoardMember {
+  board_id: string
+  user_id: string
+  role: Role
+  joined_at: string
+}
+
+export interface Invite {
+  id: string
+  board_id: string
+  token: string
+  role: Exclude<Role, 'owner'>
+  created_at: string
+  expires_at: string | null
+  revoked_at: string | null
+  max_uses: number | null
+  uses: number
+}
+
+export function canEdit(role: Role): boolean {
+  return role === 'owner' || role === 'editor'
+}
+
+/* ---- Board content ------------------------------------------------------- */
+
+/** An assignable person on a board. Not necessarily an account: a member is a
+ *  name you can put on a card, and `auth_user_id` is set only for those who
+ *  actually joined. */
 export interface Member {
   id: string
   name: string
   color: string
   created_at: string
+  email: string | null
+  auth_user_id: string | null
 }
 
 export interface Label {
@@ -99,6 +144,10 @@ export interface BoardData {
   tasks: Task[]
   members: Member[]
   labels: Label[]
+  /** Accounts with access right now. A Member whose auth_user_id is absent from
+   *  this list had access once and lost it — their row is kept deliberately so
+   *  cards don't silently lose an assignee. */
+  access: BoardMember[]
 }
 
 export interface Filters {

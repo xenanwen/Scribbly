@@ -1,4 +1,4 @@
-# Paperboard
+# Scribbly
 
 A Kanban board that looks like a paper notebook. Four columns, drag-and-drop between them, and three ways in — log in, create an account, or start as a guest with no sign-up at all. Everything persists in Supabase behind Row Level Security.
 
@@ -6,7 +6,7 @@ A Kanban board that looks like a paper notebook. Four columns, drag-and-drop bet
 
 <!-- Take a screenshot of the board once it's running, save it as docs/screenshot.png,
      and uncomment the line below. Graders look at the README first.
-![Paperboard: four columns on a cream ruled-paper background](docs/screenshot.png)
+![Scribbly: four columns on a cream ruled-paper background](docs/screenshot.png)
 -->
 
 
@@ -15,8 +15,8 @@ A Kanban board that looks like a paper notebook. Four columns, drag-and-drop bet
 ## Quick start
 
 ```zsh
-git clone https://github.com/<you>/paperboard.git
-cd paperboard
+git clone https://github.com/<you>/Task-Board-Project.git
+cd Task-Board-Project
 npm install
 cp .env.local.example .env.local   # then fill in the two values (see below)
 npm run dev                        # http://localhost:5173
@@ -28,8 +28,11 @@ same instructions instead of a blank page.
 ### Supabase setup (5 minutes)
 
 1. Create a free project at [supabase.com](https://supabase.com).
-2. **SQL Editor → New query** → paste all of [`supabase/schema.sql`](supabase/schema.sql) → **Run**.
-   It's idempotent, so re-running it is safe.
+2. **SQL Editor → New query** → run these in order. Both are idempotent, so
+   re-running either is safe:
+   1. [`supabase/schema.sql`](supabase/schema.sql) — tables, RLS, triggers
+   2. [`supabase/002_collaboration.sql`](supabase/002_collaboration.sql) — shared
+      boards, invites, and the migration of any existing rows onto a board
 3. **Authentication → Sign In / Providers**:
    - enable **Anonymous sign-ins** — without this there are no guest sessions
    - enable **Email**, and leave **Confirm email** on
@@ -63,7 +66,7 @@ same instructions instead of a blank page.
 | `npm run build` | Typecheck, then production build to `dist/` |
 | `npm run preview` | Serve the production build locally |
 | `npm run typecheck` | `tsc --noEmit` |
-| `npm test` | 123 assertions over the ordering maths, filters, dates and form validation |
+| `npm test` | 145 assertions over ordering maths, filters, dates, validation and invite links |
 | `npm run check` | typecheck + tests + build — run this before pushing |
 
 ---
@@ -76,15 +79,19 @@ src/
 │   ├── supabase.ts     Client, URL normalising, friendly error translation
 │   ├── auth.ts         Guests, sign up / in / out, guest→account upgrade
 │   ├── validate.ts     Email + password rules (pure, unit-tested)
+│   ├── boards.ts       Boards, membership, invite links
 │   ├── board.ts        Pure logic: ordering, filtering, urgency, stats
 │   └── types.ts        Domain types, mirroring the SQL schema
 ├── hooks/
 │   ├── useSession.ts   Who is signed in — driven by onAuthStateChange
-│   ├── useBoard.ts     All reads/writes, optimistic updates, realtime
+│   ├── useBoards.ts    Which boards you can reach, and which is on screen
+│   ├── useBoard.ts     One board: reads/writes, optimistic updates, realtime
 │   └── useTaskThread.ts  Comments + activity for one task (lazy)
 ├── components/
 │   ├── HomeScreen.tsx  Opening screen: log in / sign up / guest
 │   ├── FinishUpgrade.tsx  Set a password after confirming an email
+│   ├── BoardSwitcher.tsx  Your boards vs boards shared with you
+│   ├── SharePanel.tsx  Invite links, roles, people with access
 │   ├── Board.tsx       Drag-and-drop orchestration
 │   ├── Column.tsx      One section + inline quick-add
 │   ├── TaskCard.tsx    Card, with pointer/keyboard drag split
@@ -100,7 +107,7 @@ src/
     ├── layout.css      Shell, masthead, board, columns
     ├── cards.css       Cards, chips, avatars, badges, skeletons
     ├── ui.css          Controls, overlays, timeline
-    └── home.css        Opening screen, identity pill, upgrade box
+    └── home.css        Opening screen, switcher, sharing, identity pill
 ```
 
 ### Authentication
@@ -158,6 +165,63 @@ another device." Cross-device guest recovery would need a separate high-entropy 
 minting one safely needs the `service_role` key in an Edge Function. Creating an account is
 the supported path instead.
 
+### Shared boards
+
+A board has members. Ownership moved from "one user per row" to "one board per
+row, with a membership table", so several people can work the same board live.
+
+| Role | Read | Write | Share | Delete board |
+| --- | --- | --- | --- | --- |
+| owner | yes | yes | yes | yes |
+| editor | yes | yes | no | no (can leave) |
+| viewer | yes | **no** | no | no (can leave) |
+
+#### Joining is by secret link, not by email
+
+The Share panel mints a URL like `…/?invite=<token>`. Anyone signed in who opens
+it joins the board; the token is stripped from the address bar immediately after.
+
+That's a deliberate choice over emailing invitations, for two reasons:
+
+1. **`auth.users` isn't readable from the browser**, and shouldn't be. Checking
+   "does this email have an account?" needs `service_role` in an Edge Function,
+   and any answer shown to the inviter is an **account-enumeration oracle** —
+   it tells an attacker who is registered.
+2. A link **works for people who haven't signed up yet**. An email lookup, by
+   definition, cannot.
+
+The token is 24 random bytes (~192 bits) generated by `gen_invite_token()` in
+Postgres, never chosen by the client. Links default to a 14-day expiry, can be
+capped by use count, and can be revoked. Every failure to redeem — wrong,
+expired, revoked, exhausted — returns the *same* message, so a token can't be
+probed for existence.
+
+**Guests can join a shared board but can't create one to share.** A board owned
+by an anonymous session that evaporates when the browser is cleared is a bad
+thing to own, so `create_board_invite()` rejects anonymous callers by checking
+the `is_anonymous` JWT claim. That finally gives the account-upgrade prompt a
+concrete reason to exist.
+
+#### Read-only means read-only
+
+A viewer doesn't get an editable board that fails at the database. Drag sensors
+are disabled, quick-add and the composer are gone, and the detail panel's fields
+sit inside a `disabled` fieldset — one attribute rather than remembering to
+disable twenty controls. RLS is still the actual boundary; the UI just stops
+lying about what's possible.
+
+#### Concurrency
+
+`position` used to be last-write-wins, which is fine alone and wrong in company.
+`moveTask` now guards its UPDATE with the `updated_at` it last read:
+
+```ts
+.eq('id', id).eq('updated_at', expected)
+```
+
+Zero rows back means a collaborator moved the same card first, so the board
+reloads and says so rather than silently overwriting them.
+
 ### Data flow
 
 The frontend talks to Supabase directly — there is no API server. Every mutation
@@ -204,8 +268,9 @@ the neighbouring card.
 
 ## Database
 
-Seven tables, all with RLS enabled and forced. Full DDL in
-[`supabase/schema.sql`](supabase/schema.sql).
+Ten tables, all with RLS enabled and forced. Base DDL in
+[`supabase/schema.sql`](supabase/schema.sql), sharing in
+[`supabase/002_collaboration.sql`](supabase/002_collaboration.sql).
 
 | Table | Purpose |
 | --- | --- |
@@ -367,15 +432,14 @@ protects the data.
 - **Debounced refetch instead of merging realtime payloads.** Merging individual
   `postgres_changes` events into local state is fiddly and easy to get subtly wrong;
   a 400ms refetch is a few extra kilobytes and is always correct.
-- **Members are rows, not users.** They're names to assign work to, not accounts — there's
-  nobody to invite. Real collaboration would mean replacing per-user ownership with board
-  membership (a `boards` + `board_members` pair and a rewrite of all seven policies), which
-  the guest-account requirement precludes.
-- **No real-time collaboration.** The change feed is filtered to `user_id=eq.<you>`, so what
-  it actually delivers is sync across tabs of the same session — not two people on one
-  board. Worth stating plainly rather than implying more. `position` is also last-write-wins
-  with no version column, so concurrent drags of the same card would need optimistic
-  concurrency before multi-user editing would be safe.
+- **Two overlapping ideas of "member".** `members` are assignable names on a card;
+  `board_members` are accounts with access. Joining by invite links the two by creating a
+  `members` row with `auth_user_id` set, so a new arrival is immediately assignable — but
+  you can still assign work to someone who has no account at all, which is often what you
+  want on a small team.
+- **Collaboration is link-based, not email-based.** See the sharing section for why —
+  briefly, an email lookup needs `service_role` server-side and leaks who has an account.
+  Emailing the link is a thin layer on top of what's here, not a redesign.
 - **Only `tasks` is published for realtime.** Comments, activity, members and labels load
   when a panel opens rather than streaming.
 - **Implicit auth flow rather than PKCE**, so email confirmation works across devices. See

@@ -68,10 +68,17 @@ h2,
 h3,
 h4 {
   font-family: var(--font-display);
-  font-weight: 600;
+  /* The display face has one weight. Asking for more makes the browser fake it. */
+  font-weight: 400;
   line-height: var(--lh-tight);
-  letter-spacing: -0.01em;
+  /* Negative tracking suited Fraunces' tight serif; a rounded playful face needs
+     its own breathing room, so this sits at zero. */
+  letter-spacing: 0;
   font-optical-sizing: auto;
+  /* Belt and braces: refuse synthetic bold and italic even if some rule further
+     down asks for them. */
+  font-synthesis-weight: none;
+  font-synthesis-style: none;
 }
 
 button,

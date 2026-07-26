@@ -2,8 +2,9 @@ import { arrayMove } from '@dnd-kit/sortable'
 import {
   positionBetween, needsRebalance, rebalance, byPosition, groupByStatus,
   matchesFilters, computeStats, urgencyOf, daysUntil, todayISO, initials, formatDue,
+  memberAccess, memberRole, byAccessThenName,
 } from '../src/lib/board'
-import type { Task, Status, Filters } from '../src/lib/types'
+import type { Task, Status, Filters, Member, BoardMember } from '../src/lib/types'
 
 let pass = 0, fail = 0
 const ok = (name: string, cond: boolean, extra = '') => {
@@ -145,6 +146,49 @@ const order = (all: Task[], s: Status) =>
   ok('extra spaces', initials('  Ada   Reyes  ') === 'AR')
   ok('empty', initials('') === '?')
   ok('single char', initials('X') === 'X')
+}
+
+/* ============ 11. member access state ===================================== */
+{
+  const mk2 = (id: string, name: string, authId: string | null): Member => ({
+    id, name, color: '#5b7c99', created_at: '', email: authId ? `${name}@x.com` : null,
+    auth_user_id: authId,
+  })
+  const access: BoardMember[] = [
+    { board_id: 'b', user_id: 'u1', role: 'owner',  joined_at: '2026-01-01' },
+    { board_id: 'b', user_id: 'u2', role: 'editor', joined_at: '2026-01-02' },
+    { board_id: 'b', user_id: 'u3', role: 'viewer', joined_at: '2026-01-03' },
+  ]
+  const owner  = mk2('m1', 'Ada',   'u1')
+  const editor = mk2('m2', 'Sam',   'u2')
+  const viewer = mk2('m3', 'Kai',   'u3')
+  const gone   = mk2('m4', 'Bo',    'u9')   // had an account, no longer on the board
+  const legacy = mk2('m5', 'Ghost', null)   // pre-003 invented person
+
+  ok('owner is active',  memberAccess(owner, access)  === 'active')
+  ok('editor is active', memberAccess(editor, access) === 'active')
+  ok('viewer is active', memberAccess(viewer, access) === 'active')
+  ok('removed member is revoked', memberAccess(gone, access) === 'revoked')
+  ok('unlinked member is revoked', memberAccess(legacy, access) === 'revoked')
+  ok('empty access list revokes everyone', memberAccess(owner, []) === 'revoked')
+
+  ok('role reads through', memberRole(owner, access) === 'owner')
+  ok('viewer role reads through', memberRole(viewer, access) === 'viewer')
+  ok('no role once removed', memberRole(gone, access) === null)
+  ok('no role when unlinked', memberRole(legacy, access) === null)
+
+  // Sorting: people still on the board first, then alphabetical inside each group.
+  const sorted = [gone, viewer, legacy, owner, editor].sort(byAccessThenName(access))
+  ok('active members sort first',
+     sorted.slice(0, 3).every(m => memberAccess(m, access) === 'active'),
+     sorted.map(m => m.name).join(','))
+  ok('alphabetical within active',
+     sorted.slice(0, 3).map(m => m.name).join(',') === 'Ada,Kai,Sam',
+     sorted.map(m => m.name).join(','))
+  ok('revoked grouped at the end',
+     sorted.slice(3).every(m => memberAccess(m, access) === 'revoked'),
+     sorted.map(m => m.name).join(','))
+  ok('nothing lost in the sort', sorted.length === 5)
 }
 
 console.log(`\n${pass} passed, ${fail} failed`)

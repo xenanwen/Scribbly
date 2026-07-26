@@ -445,42 +445,48 @@ select.input,
 
 /* ---- Colour picker ------------------------------------------------------ */
 
-.colorpick {
-  position: relative;
+/* The native <input type="color">, restyled to read as a swatch. Browsers wrap
+   the colour in their own chrome, so each engine needs its pseudo-element
+   flattened — otherwise you get a grey inset border round the colour. */
+.colorpick__input {
   flex: none;
-}
-
-.colorpick__current {
-  width: 26px;
-  height: 26px;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: none;
   border-radius: var(--r-md);
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.14);
+  background: none;
+  cursor: pointer;
+  /* Safari and iOS ignore border-radius on the control itself without this. */
+  -webkit-appearance: none;
+  appearance: none;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.16), var(--sh-rest);
+  transition: box-shadow var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
 }
 
-.colorpick__grid {
-  position: absolute;
-  bottom: calc(100% + 6px);
-  left: 0;
-  z-index: var(--z-panel);
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 5px;
-  padding: 7px;
-  background: var(--paper-card);
-  border: 1px solid var(--rule-strong);
-  border-radius: var(--r-md);
-  box-shadow: var(--sh-hover);
+.colorpick__input:hover {
+  transform: translateY(-1px);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.22), var(--sh-hover);
 }
 
-.colorpick__dot {
-  width: 20px;
-  height: 20px;
-  border-radius: var(--r-full);
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+.colorpick__input::-webkit-color-swatch-wrapper {
+  padding: 0;
 }
 
-.colorpick__dot.is-on {
-  box-shadow: 0 0 0 2px var(--ink);
+.colorpick__input::-webkit-color-swatch {
+  border: none;
+  border-radius: calc(var(--r-md) - 1px);
+}
+
+.colorpick__input::-moz-color-swatch {
+  border: none;
+  border-radius: calc(var(--r-md) - 1px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .colorpick__input:hover {
+    transform: none;
+  }
 }
 
 /* ---- Scrim / Modal / Drawer -------------------------------------------- */
@@ -602,7 +608,7 @@ select.input,
 .drawer__title {
   font-family: var(--font-display);
   font-size: var(--fs-lg);
-  font-weight: 600;
+  font-weight: 400;
   line-height: 1.25;
 }
 
@@ -622,7 +628,7 @@ select.input,
 .detail__title {
   font-family: var(--font-display);
   font-size: var(--fs-lg);
-  font-weight: 600;
+  font-weight: 400;
   line-height: 1.28;
   width: 100%;
   border: 1px solid transparent;
@@ -927,6 +933,33 @@ select.input,
   font-size: var(--fs-xs);
   color: var(--ink-faint);
   white-space: nowrap;
+  text-transform: capitalize;
+}
+
+/* Someone who had access and lost it. Their row is kept deliberately — see
+   TeamPanel — so it's dimmed rather than hidden. */
+.roster__row--gone {
+  opacity: 0.55;
+}
+
+.roster__row--gone .avatar {
+  filter: grayscale(1);
+}
+
+.roster__gone {
+  font-style: italic;
+  text-transform: none;
+}
+
+.detail__hcount {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0;
+  background: rgba(35, 48, 61, 0.08);
+  border-radius: var(--r-full);
+  padding: 1px 6px;
+  margin-left: 6px;
+  color: var(--ink-soft);
 }
 
 .session-id {
@@ -1059,6 +1092,22 @@ select.input,
   font-size: var(--fs-sm);
   color: var(--ink-soft);
   line-height: 1.5;
+}
+
+/* A fieldset used purely to disable everything inside it — strip the browser's
+   default border, padding and margin so it's invisible in the layout. */
+.plain {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.plain:disabled .input,
+.plain:disabled .segmented,
+.plain:disabled .picker {
+  opacity: 0.72;
+  cursor: not-allowed;
 }
 
 code {

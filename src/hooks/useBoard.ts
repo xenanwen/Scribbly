@@ -3,6 +3,7 @@ import { friendlyError, supabase } from '../lib/supabase'
 import { rebalance, toTask } from '../lib/board'
 import type {
   BoardData,
+  BoardMember,
   Label,
   Member,
   NewTaskInput,
@@ -13,28 +14,31 @@ import type {
 } from '../lib/types'
 
 /* ==========================================================================
-   useBoard — the app's only stateful data layer.
+   useBoard — everything on one board.
 
-   Design notes:
+   Keyed on boardId, not on the user: several people can hold the same board
+   open, and one person can have several boards. RLS decides whether the board
+   is reachable at all, so this hook never checks permissions itself — it just
+   asks, and surfaces the refusal if one comes back.
 
-   * OPTIMISTIC WRITES. Every mutation updates React state first, then hits the
-     network. If the request fails we roll back to the exact snapshot taken
-     before the change and surface a message. This is what makes drag-and-drop
-     feel instant instead of laggy-then-snappy.
+   Three things worth knowing:
 
-   * ONE QUERY. The board loads tasks with their join rows embedded
-     (`task_assignees(member_id)`), so first paint is 3 requests, not 3 + 2N.
+   * OPTIMISTIC WRITES. State updates first, then the network. On failure the
+     exact pre-change snapshot is restored and a dismissible notice appears.
+     That's what makes dragging feel instant.
 
-   * REALTIME. A Postgres change feed filtered to this user's rows keeps a
-     second tab/device in sync. Rather than merging individual payloads (fiddly,
-     easy to get wrong), a change triggers a debounced refetch — and refetches
-     are suppressed while our own writes are in flight so they can't clobber an
-     optimistic update mid-flight.
+   * ONE QUERY per collection. Tasks come back with their join rows embedded,
+     so first paint is 3 requests rather than 3 + 2N.
+
+   * CONFLICT DETECTION on moves. Now that two people can drag the same card,
+     `moveTask` guards its UPDATE with the `updated_at` it last saw. If someone
+     else got there first the guard matches nothing, and rather than silently
+     overwriting them we refetch and say so.
    ========================================================================== */
 
 type LoadState = 'loading' | 'ready' | 'error'
 
-const EMPTY: BoardData = { tasks: [], members: [], labels: [] }
+const EMPTY: BoardData = { tasks: [], members: [], labels: [], access: [] }
 
 const TASK_SELECT = '*, task_assignees(member_id), task_labels(label_id)'
 
@@ -42,9 +46,7 @@ export interface UseBoard {
   data: BoardData
   loadState: LoadState
   loadError: string | null
-  /** True while any write is in flight — drives the "saving…" hint. */
   syncing: boolean
-  /** Non-blocking problems: a failed write, a rejected rename. */
   notice: string | null
   dismissNotice: () => void
   refresh: () => Promise<void>
@@ -58,21 +60,22 @@ export interface UseBoard {
   setAssignees: (taskId: string, memberIds: string[]) => Promise<void>
   setLabels: (taskId: string, labelIds: string[]) => Promise<void>
 
-  createMember: (name: string, color: string) => Promise<void>
-  deleteMember: (id: string) => Promise<void>
+  /* No createMember/deleteMember: members are created by a database trigger when
+     someone joins the board, and kept when they leave. There is no longer any
+     way — from the UI or the API — to invent a person who doesn't exist. */
   createLabel: (name: string, color: string) => Promise<void>
   deleteLabel: (id: string) => Promise<void>
 }
 
-export function useBoard(userId: string | null): UseBoard {
+export function useBoard(boardId: string | null): UseBoard {
   const [data, setDataState] = useState<BoardData>(EMPTY)
   const [loadState, setLoadState] = useState<LoadState>('loading')
   const [loadError, setLoadError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
 
-  /* A ref mirror of state. Mutations need to read the *current* board
-     synchronously to build their rollback snapshot; reading `data` from a
-     closure would give a stale value when two drags happen back to back. */
+  /* A ref mirror of state. Mutations need the *current* board synchronously to
+     build their rollback snapshot; reading `data` from a closure would give a
+     stale value when two drags happen back to back. */
   const dataRef = useRef<BoardData>(EMPTY)
   const setData = useCallback((next: BoardData | ((prev: BoardData) => BoardData)) => {
     const resolved = typeof next === 'function' ? next(dataRef.current) : next
@@ -80,8 +83,6 @@ export function useBoard(userId: string | null): UseBoard {
     setDataState(resolved)
   }, [])
 
-  /* Writes in flight. The ref is the source of truth (read synchronously by the
-     realtime handler); the state copy exists only to render the "saving…" hint. */
   const pendingWrites = useRef(0)
   const [syncing, setSyncing] = useState(false)
   const refetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -107,32 +108,37 @@ export function useBoard(userId: string | null): UseBoard {
 
   /* ---- Read ------------------------------------------------------------ */
 
-  const fetchAll = useCallback(async (): Promise<BoardData> => {
-    const [tasksRes, membersRes, labelsRes] = await Promise.all([
-      supabase.from('tasks').select(TASK_SELECT),
-      supabase.from('members').select('*').order('created_at'),
-      supabase.from('labels').select('*').order('created_at'),
+  const fetchAll = useCallback(async (id: string): Promise<BoardData> => {
+    const [tasksRes, membersRes, labelsRes, accessRes] = await Promise.all([
+      supabase.from('tasks').select(TASK_SELECT).eq('board_id', id),
+      supabase.from('members').select('*').eq('board_id', id).order('created_at'),
+      supabase.from('labels').select('*').eq('board_id', id).order('created_at'),
+      // Who currently has access. Needed to tell an active member from one who
+      // has left — their Member row is deliberately kept either way.
+      supabase.from('board_members').select('*').eq('board_id', id).order('joined_at'),
     ])
     if (tasksRes.error) throw tasksRes.error
     if (membersRes.error) throw membersRes.error
     if (labelsRes.error) throw labelsRes.error
+    if (accessRes.error) throw accessRes.error
 
     return {
       tasks: ((tasksRes.data ?? []) as TaskRow[]).map(toTask),
       members: (membersRes.data ?? []) as Member[],
       labels: (labelsRes.data ?? []) as Label[],
+      access: (accessRes.data ?? []) as BoardMember[],
     }
   }, [])
 
   const load = useCallback(
     async (mode: 'initial' | 'silent') => {
-      if (!userId) return
+      if (!boardId) return
       if (mode === 'initial') {
         setLoadState('loading')
         setLoadError(null)
       }
       try {
-        const next = await fetchAll()
+        const next = await fetchAll(boardId)
         if (!alive.current) return
         setData(next)
         setLoadState('ready')
@@ -147,19 +153,27 @@ export function useBoard(userId: string | null): UseBoard {
         }
       }
     },
-    [userId, fetchAll, setData],
+    [boardId, fetchAll, setData],
   )
 
+  // Switching boards must clear the old one's contents immediately, or the
+  // previous board's cards flash on screen under the new board's name.
   useEffect(() => {
-    if (userId) void load('initial')
-  }, [userId, load])
+    if (!boardId) {
+      setData(EMPTY)
+      setLoadState('loading')
+      return
+    }
+    setData(EMPTY)
+    void load('initial')
+  }, [boardId, load, setData])
 
   const refresh = useCallback(() => load('initial'), [load])
 
   /* ---- Realtime -------------------------------------------------------- */
 
   useEffect(() => {
-    if (!userId) return
+    if (!boardId) return
 
     const scheduleRefetch = () => {
       if (refetchTimer.current) clearTimeout(refetchTimer.current)
@@ -169,11 +183,14 @@ export function useBoard(userId: string | null): UseBoard {
       }, 400)
     }
 
+    /* Filtered to this board, so a collaborator's change arrives but nobody
+       else's does — and RLS applies to realtime too, so the filter is a
+       performance choice rather than the security boundary. */
     const channel = supabase
-      .channel(`board:${userId}`)
+      .channel(`board:${boardId}`)
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'tasks', filter: `user_id=eq.${userId}` },
+        { event: '*', schema: 'public', table: 'tasks', filter: `board_id=eq.${boardId}` },
         scheduleRefetch,
       )
       .subscribe()
@@ -181,11 +198,10 @@ export function useBoard(userId: string | null): UseBoard {
     return () => {
       void supabase.removeChannel(channel)
     }
-  }, [userId, load])
+  }, [boardId, load])
 
   /* ---- Write helper ---------------------------------------------------- */
 
-  /** Apply an optimistic change, run the network call, roll back on failure. */
   const write = useCallback(
     async (apply: (prev: BoardData) => BoardData, run: () => Promise<void>) => {
       const snapshot = dataRef.current
@@ -210,13 +226,11 @@ export function useBoard(userId: string | null): UseBoard {
   const createTask = useCallback(
     async (input: NewTaskInput) => {
       const title = input.title.trim()
-      if (!title) return
+      if (!title || !boardId) return
 
       const status = input.status ?? 'todo'
       const siblings = dataRef.current.tasks.filter((t) => t.status === status)
-      const position = siblings.length
-        ? Math.max(...siblings.map((t) => t.position)) + 1000
-        : 1000
+      const position = siblings.length ? Math.max(...siblings.map((t) => t.position)) + 1000 : 1000
 
       const tempId = `temp-${crypto.randomUUID()}`
       const now = new Date().toISOString()
@@ -239,11 +253,12 @@ export function useBoard(userId: string | null): UseBoard {
       beginWrite()
 
       try {
-        // user_id is filled in by the column DEFAULT auth.uid() — the client
-        // never gets to choose whose row this is.
+        // user_id comes from the DEFAULT auth.uid(); we only choose the board,
+        // and RLS checks we're allowed to write to it.
         const { data: inserted, error } = await supabase
           .from('tasks')
           .insert({
+            board_id: boardId,
             title,
             description: optimistic.description,
             status,
@@ -257,20 +272,30 @@ export function useBoard(userId: string | null): UseBoard {
 
         const realId = (inserted as TaskRow).id
 
+        // board_id on the join rows is overwritten by a BEFORE trigger that
+        // reads it off the parent task, so it can't be spoofed. Sent anyway to
+        // satisfy the NOT NULL before the trigger runs.
         if (optimistic.assignee_ids.length) {
-          const { error: aErr } = await supabase
-            .from('task_assignees')
-            .insert(optimistic.assignee_ids.map((member_id) => ({ task_id: realId, member_id })))
+          const { error: aErr } = await supabase.from('task_assignees').insert(
+            optimistic.assignee_ids.map((member_id) => ({
+              task_id: realId,
+              member_id,
+              board_id: boardId,
+            })),
+          )
           if (aErr) throw aErr
         }
         if (optimistic.label_ids.length) {
-          const { error: lErr } = await supabase
-            .from('task_labels')
-            .insert(optimistic.label_ids.map((label_id) => ({ task_id: realId, label_id })))
+          const { error: lErr } = await supabase.from('task_labels').insert(
+            optimistic.label_ids.map((label_id) => ({
+              task_id: realId,
+              label_id,
+              board_id: boardId,
+            })),
+          )
           if (lErr) throw lErr
         }
 
-        // Swap the temp row for the real one, keeping its place in the array.
         if (alive.current) {
           setData((prev) => ({
             ...prev,
@@ -294,7 +319,7 @@ export function useBoard(userId: string | null): UseBoard {
         endWrite()
       }
     },
-    [setData, beginWrite, endWrite],
+    [boardId, setData, beginWrite, endWrite],
   )
 
   const updateTask = useCallback(
@@ -312,20 +337,52 @@ export function useBoard(userId: string | null): UseBoard {
     [write],
   )
 
-  /** The drop handler. Status and position move together in one round trip. */
+  /**
+   * The drop handler. Status and position move together in one round trip.
+   *
+   * The `.eq('updated_at', …)` is optimistic concurrency: it only matches if
+   * nobody has touched this row since we read it. Zero rows back means a
+   * collaborator moved the same card first, so we reload rather than quietly
+   * overwrite their change — last-write-wins is fine alone and wrong in company.
+   */
   const moveTask = useCallback(
-    (id: string, status: Status, position: number) =>
-      write(
-        (prev) => ({
-          ...prev,
-          tasks: prev.tasks.map((t) => (t.id === id ? { ...t, status, position } : t)),
-        }),
-        async () => {
-          const { error } = await supabase.from('tasks').update({ status, position }).eq('id', id)
-          if (error) throw error
-        },
-      ),
-    [write],
+    async (id: string, status: Status, position: number) => {
+      const before = dataRef.current
+      const current = before.tasks.find((t) => t.id === id)
+      if (!current) return
+
+      const expected = current.updated_at
+      setData((prev) => ({
+        ...prev,
+        tasks: prev.tasks.map((t) => (t.id === id ? { ...t, status, position } : t)),
+      }))
+      beginWrite()
+
+      try {
+        const { data: rows, error } = await supabase
+          .from('tasks')
+          .update({ status, position })
+          .eq('id', id)
+          .eq('updated_at', expected)
+          .select('id')
+        if (error) throw error
+
+        if (!rows || rows.length === 0) {
+          if (alive.current) {
+            setNotice('Someone else moved that card first — the board has been refreshed.')
+            await load('silent')
+          }
+        }
+      } catch (err) {
+        if (alive.current) {
+          setData(before)
+          setNotice(friendlyError(err))
+        }
+      } finally {
+        endWrite()
+      }
+    },
+    [setData, beginWrite, endWrite, load],
   )
 
   const deleteTask = useCallback(
@@ -377,8 +434,8 @@ export function useBoard(userId: string | null): UseBoard {
 
   /* ---- Join tables ----------------------------------------------------- */
 
-  /** Diff-based: only the added/removed rows are written, so the activity log
-   *  records "assigned Sam" rather than a churn of delete-all + insert-all. */
+  /** Diff-based: only added/removed rows are written, so the activity log reads
+   *  "assigned Sam" rather than a churn of delete-all then insert-all. */
   const syncLinks = useCallback(
     (
       table: 'task_assignees' | 'task_labels',
@@ -387,6 +444,7 @@ export function useBoard(userId: string | null): UseBoard {
       taskId: string,
       nextIds: string[],
     ) => {
+      if (!boardId) return Promise.resolve()
       const current = dataRef.current.tasks.find((t) => t.id === taskId)
       const before = current ? current[key] : []
       const added = nextIds.filter((id) => !before.includes(id))
@@ -410,13 +468,13 @@ export function useBoard(userId: string | null): UseBoard {
           if (added.length) {
             const { error } = await supabase
               .from(table)
-              .insert(added.map((id) => ({ task_id: taskId, [column]: id })))
+              .insert(added.map((id) => ({ task_id: taskId, [column]: id, board_id: boardId })))
             if (error) throw error
           }
         },
       )
     },
-    [write],
+    [write, boardId],
   )
 
   const setAssignees = useCallback(
@@ -431,54 +489,15 @@ export function useBoard(userId: string | null): UseBoard {
     [syncLinks],
   )
 
-  /* ---- Members & labels ------------------------------------------------ */
-
-  const createMember = useCallback(
-    async (name: string, color: string) => {
-      const clean = name.trim()
-      if (!clean) return
-      const { data: row, error } = await supabase
-        .from('members')
-        .insert({ name: clean, color })
-        .select()
-        .single()
-      if (error) {
-        setNotice(friendlyError(error))
-        return
-      }
-      setData((prev) => ({ ...prev, members: [...prev.members, row as Member] }))
-    },
-    [setData],
-  )
-
-  const deleteMember = useCallback(
-    (id: string) =>
-      write(
-        (prev) => ({
-          ...prev,
-          members: prev.members.filter((m) => m.id !== id),
-          // ON DELETE CASCADE removes the join rows server-side; mirror that
-          // locally so avatars disappear from cards immediately.
-          tasks: prev.tasks.map((t) => ({
-            ...t,
-            assignee_ids: t.assignee_ids.filter((a) => a !== id),
-          })),
-        }),
-        async () => {
-          const { error } = await supabase.from('members').delete().eq('id', id)
-          if (error) throw error
-        },
-      ),
-    [write],
-  )
+  /* ---- Labels ---------------------------------------------------------- */
 
   const createLabel = useCallback(
     async (name: string, color: string) => {
       const clean = name.trim()
-      if (!clean) return
+      if (!clean || !boardId) return
       const { data: row, error } = await supabase
         .from('labels')
-        .insert({ name: clean, color })
+        .insert({ name: clean, color, board_id: boardId })
         .select()
         .single()
       if (error) {
@@ -487,7 +506,7 @@ export function useBoard(userId: string | null): UseBoard {
       }
       setData((prev) => ({ ...prev, labels: [...prev.labels, row as Label] }))
     },
-    [setData],
+    [setData, boardId],
   )
 
   const deleteLabel = useCallback(
@@ -524,8 +543,6 @@ export function useBoard(userId: string | null): UseBoard {
     rebalanceColumn,
     setAssignees,
     setLabels,
-    createMember,
-    deleteMember,
     createLabel,
     deleteLabel,
   }
